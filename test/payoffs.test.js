@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { makeRng } from '../src/game/rng.js';
-import { makeMatrix, pairPayoff, groupPayoff, groupParams, stakesForRound } from '../src/game/payoffs.js';
+import { makeRng } from '../public/game/rng.js';
+import { makeMatrix, pairPayoff, groupPayoff, groupParams, stakesForRound } from '../public/game/payoffs.js';
 
 test('every generated matrix is a real prisoner’s dilemma', () => {
   for (let seed = 0; seed < 400; seed++) {

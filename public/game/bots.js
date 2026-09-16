@@ -143,3 +143,45 @@ export function botAccusation(rng, bot, game) {
   const others = game.order.filter((id) => id !== bot.id);
   return rng.pick(others);
 }
+
+/** Ghosts play cards too, with roughly the taste of the strategy they are. */
+export function botCard(rng, bot, game, group) {
+  if (!game.config.cards || bot.playedThisRound) return null;
+  if (!bot.hand.length) return null;
+  const eagerness = { rat: 0.55, grudger: 0.4, titfortat: 0.35, saint: 0.25, pavlov: 0.35, coin: 0.5 };
+  if (!rng.chance(eagerness[bot.strategy] ?? 0.35)) return null;
+
+  const prefer = {
+    rat: ['alibi', 'fix', 'counterfeit', 'skim', 'setup'],
+    saint: ['insurance', 'godfather', 'split', 'priest'],
+    grudger: ['muscle', 'shakedown', 'insurance', 'lawyer'],
+    titfortat: ['godfather', 'split', 'lookout', 'insurance'],
+    pavlov: ['lookout', 'skim', 'counterfeit', 'lawyer'],
+    coin: ['loanshark', 'counterfeit', 'confession', 'setup'],
+  }[bot.strategy] ?? [];
+
+  const cardId = bot.hand.find((c) => prefer.includes(c)) ?? rng.pick(bot.hand);
+  let targetId = null;
+  if (cardId === 'setup' || cardId === 'confession') {
+    const pool = cardId === 'setup'
+      ? group.memberIds.filter((x) => x !== bot.id)
+      : game.order.filter((x) => x !== bot.id);
+    if (pool.length === 0) return null;
+    targetId = rng.pick(pool);
+  }
+  return { cardId, targetId };
+}
+
+/** In a vote, a ghost points at whoever has hurt it most, or whoever is winning. */
+export function botVote(rng, bot, game) {
+  const others = game.order.filter((id) => id !== bot.id);
+  if (others.length === 0) return bot.id;
+  const hurt = others.filter((id) => everBetrayed(game, bot.id, id));
+  if (hurt.length && rng.chance(0.7)) return rng.pick(hurt);
+  const leader = others
+    .map((id) => game.players.get(id))
+    .filter(Boolean)
+    .sort((a, b) => b.score - a.score)[0];
+  if (leader && rng.chance(0.6)) return leader.id;
+  return rng.pick(others);
+}

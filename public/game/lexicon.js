@@ -11,17 +11,19 @@ export const LEXICON = {
     'Carteret', 'the wrong end of Utica Avenue', 'a Cracker Barrel off I-95',
     'the industrial park nobody can name', 'Hoboken, regrettably',
   ],
+  // These get used as the subject of a sentence, so they stay plain noun
+  // phrases — a trailing relative clause turns "{cop} says" into a car crash.
   cop: [
     'Detective Marchetti', 'Agent Dunlop', 'a federal agent named Kevin',
     'Detective Sergeant Ruiz', 'a man from the DA’s office with a bad cold',
-    'Lieutenant Bracco', 'an FBI agent who will not stop saying "buddy"',
-    'Detective Okonkwo, who is patient in a way that frightens people',
-    'a prosecutor with a wedding ring she keeps taking off',
+    'Lieutenant Bracco', 'an FBI agent with a very calm voice',
+    'Detective Okonkwo', 'a prosecutor named Hale', 'Inspector Vaughn',
+    'a young assistant DA with something to prove',
   ],
   don: [
     'Don Salvatore', 'Uncle Vito', 'Mr. Fontana', 'the Old Man',
     'Aunt Rosaria', 'Big Tommy Two Phones', 'Mr. Petrosino',
-    'Nonna Clara, who has outlived four indictments',
+    'Nonna Clara', 'Mr. Aiello', 'the Widow Bracco',
   ],
   item: [
     'a gold-plated nail gun', 'eleven crates of counterfeit Advil',

@@ -7,7 +7,7 @@
 <meta name="description" content="A multiplayer game of trust, betrayal and organised crime. Bring friends. Lose them." />
 <meta name="theme-color" content="#0b0b0d" />
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' fill='%230b0b0d'/%3E%3Ctext x='16' y='23' font-size='20' font-family='Georgia,serif' fill='%23b5232b' text-anchor='middle'%3ES%3C/text%3E%3C/svg%3E" />
-<link rel="stylesheet" href="/style.css" />
+<link rel="stylesheet" href="./style.css" />
 </head>
 <body>
   <div class="grain" aria-hidden="true"></div>
@@ -21,6 +21,9 @@
     <div class="chrome-mid">
       <span class="phase-label" id="phaseLabel"></span>
       <div class="timer" id="timer"><div class="timer-fill" id="timerFill"></div></div>
+      <div class="heat" id="heat" title="How much noise this table is making">
+        <div class="heat-fill" id="heatFill"></div>
+      </div>
     </div>
     <div class="chrome-right">
       <span class="chip money" id="moneyChip"></span>
@@ -39,6 +42,6 @@
 
   <div id="toasts" class="toasts" aria-live="assertive"></div>
 
-  <script type="module" src="/app.js"></script>
+  <script type="module" src="./app.js"></script>
 </body>
 </html>

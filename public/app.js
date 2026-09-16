@@ -1,4 +1,8 @@
-// STANDOFF — client. One socket, one state object, one render function.
+// STANDOFF — client.
+//
+// The same UI drives three transports: a websocket to a Node server, or the
+// engine running here in the page for pass-and-play and solo. That is what
+// lets this work on static hosting with nobody home.
 
 const $ = (sel) => document.querySelector(sel);
 const app = $('#app');
@@ -6,6 +10,9 @@ const rail = $('#rail');
 const chrome = $('#chrome');
 
 let ws = null;
+let local = null;
+let mode = null;                     // 'online' | 'device' | 'solo'
+let socketReady = false;
 let state = null;
 let me = { playerId: null, token: null, code: null, name: localStorage.getItem('standoff.name') ?? '' };
 let draft = '';
@@ -14,6 +21,7 @@ let phaseStart = Date.now();
 let lastPhaseKey = '';
 let typed = new Set();
 let reconnectDelay = 500;
+let pendingCard = null;              // a card waiting on a target
 
 /* ------------------------------------------------------------------ utils */
 
@@ -31,54 +39,108 @@ function toast(msg) {
 }
 
 function send(obj) {
-  if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(obj));
+  if (mode === 'online') {
+    if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(obj));
+    return;
+  }
+  if (local) {
+    local.send(obj);
+    if (local.error) { toast(local.error); local.error = null; }
+  }
+}
+
+function applyState(next) {
+  const first = !state;
+  state = next;
+  clockOffset = state.serverNow ? Date.now() - state.serverNow : 0;
+  const key = `${state.phase}:${state.round}:${state.local?.seatIndex ?? 0}:${state.local?.passing ?? ''}`;
+  if (key !== lastPhaseKey) {
+    lastPhaseKey = key;
+    phaseStart = Date.now();
+    if (['act', 'deal', 'talk'].includes(state.phase)) draft = '';
+    pendingCard = null;
+    window.scrollTo({ top: 0, behavior: first ? 'auto' : 'smooth' });
+  }
+  render();
 }
 
 /* ------------------------------------------------------------- connection */
 
+/**
+ * Is anybody home? On static hosting (GitHub Pages, a file:// page) there is no
+ * server to keep a socket open, so we ask before trying and quietly fall back
+ * to the two offline modes instead of throwing console errors at people.
+ */
+async function serverPresent() {
+  if (!location.host || location.protocol === 'file:') return false;
+  try {
+    const res = await fetch(new URL('health', location.href), { cache: 'no-store' });
+    if (!res.ok) return false;
+    const body = await res.json();
+    return !!body?.ok;
+  } catch {
+    return false;
+  }
+}
+
 function connect() {
-  const proto = location.protocol === 'https:' ? 'wss' : 'ws';
-  ws = new WebSocket(`${proto}://${location.host}`);
+  let url;
+  try {
+    const proto = location.protocol === 'https:' ? 'wss' : 'ws';
+    if (!location.host) return;                   // opened as a file:// page
+    url = `${proto}://${location.host}`;
+  } catch { return; }
+
+  try { ws = new WebSocket(url); } catch { return; }
 
   ws.onopen = () => {
+    socketReady = true;
     reconnectDelay = 500;
+    if (!mode) render();
     const saved = JSON.parse(localStorage.getItem('standoff.session') ?? 'null');
-    if (saved?.code && saved?.token) {
-      send({ t: 'resume', code: saved.code, token: saved.token });
-    }
+    if (saved?.code && saved?.token) send({ t: 'resume', code: saved.code, token: saved.token });
   };
 
   ws.onmessage = (ev) => {
     let msg;
     try { msg = JSON.parse(ev.data); } catch { return; }
     if (msg.t === 'welcome') {
+      mode = 'online';
       me.playerId = msg.playerId;
       me.token = msg.token;
       me.code = msg.code;
       localStorage.setItem('standoff.session', JSON.stringify({ code: msg.code, token: msg.token }));
       history.replaceState(null, '', `#${msg.code}`);
     } else if (msg.t === 'state') {
-      const prev = state;
-      state = msg.state;
-      clockOffset = Date.now() - state.serverNow;
-      const key = `${state.phase}:${state.round}`;
-      if (key !== lastPhaseKey) {
-        lastPhaseKey = key;
-        phaseStart = Date.now();
-        if (state.phase === 'deal' || state.phase === 'talk') draft = '';
-        window.scrollTo({ top: 0, behavior: prev ? 'smooth' : 'auto' });
-      }
-      render();
+      if (mode !== 'online') return;
+      applyState(msg.state);
     } else if (msg.t === 'error') {
       toast(msg.msg);
     }
   };
 
   ws.onclose = () => {
-    setTimeout(connect, reconnectDelay);
-    reconnectDelay = Math.min(reconnectDelay * 2, 8000);
+    if (mode === 'online') {
+      setTimeout(connect, reconnectDelay);
+      reconnectDelay = Math.min(reconnectDelay * 2, 8000);
+    } else {
+      socketReady = false;
+      if (!mode) render();
+    }
   };
   ws.onerror = () => { try { ws.close(); } catch { /* ignore */ } };
+}
+
+async function startLocal(kind) {
+  const { LocalTable } = await import('./net/local.js');
+  mode = kind;
+  local = new LocalTable({ mode: kind, onState: applyState });
+  if (kind === 'solo') {
+    const name = me.name || 'You';
+    local.send({ t: 'addLocal', name });
+  } else {
+    local.emit();
+  }
 }
 
 /* ------------------------------------------------------------------ timer */
@@ -102,25 +164,26 @@ function tickTimer() {
 /* ----------------------------------------------------------------- render */
 
 function render() {
-  if (!state) return;
+  if (!state) { app.innerHTML = viewDoor(); chrome.classList.add('hidden'); rail.classList.add('hidden'); return; }
   renderChrome();
   renderRail();
 
-  const view = {
-    lobby: viewLobby,
-    deal: viewDeal,
-    talk: viewTalk,
-    squeeze: viewSqueeze,
-    reckoning: viewReckoning,
-    accusation: viewAccusation,
-    ledger: viewLedger,
-  }[state.phase] ?? viewLobby;
+  let body;
+  if (state.local?.passing) body = viewPass();
+  else {
+    const view = {
+      lobby: viewLobby, act: viewAct, deal: viewDeal, talk: viewTalk,
+      squeeze: viewSqueeze, reckoning: viewReckoning, event: viewEvent,
+      vote: viewVote, accusation: viewAccusation, ledger: viewLedger,
+    }[state.phase] ?? viewLobby;
+    body = view();
+  }
 
   const active = document.activeElement;
   const keepId = active && active.id ? active.id : null;
   const caret = active && 'selectionStart' in active ? active.selectionStart : null;
 
-  app.innerHTML = view();
+  app.innerHTML = body;
 
   if (keepId) {
     const again = document.getElementById(keepId);
@@ -135,24 +198,49 @@ function render() {
 }
 
 function renderChrome() {
-  chrome.classList.toggle('hidden', !me.playerId);
-  $('#roomChip').textContent = state.code ?? '';
-  $('#moneyChip').textContent = state.you ? money(state.you.score) : '';
+  const inPlay = state.phase !== 'lobby';
+  chrome.classList.toggle('hidden', false);
+  $('#roomChip').textContent = mode === 'online' ? state.code ?? '' : mode === 'solo' ? 'SOLO' : 'ONE DEVICE';
+  const moneyChip = $('#moneyChip');
+  moneyChip.textContent = state.you ? money(state.you.score) : '';
+  // on a shared screen there is no "you" between turns; don't leave an empty box
+  moneyChip.classList.toggle('hidden', !state.you);
   $('#cardBtn').classList.toggle('hidden', !state.you?.role);
+
   const labels = {
     lobby: 'THE BACK ROOM',
+    act: state.act ? state.act.name : 'A NEW ACT',
     deal: `THE JOB · ${state.round} OF ${state.totalRounds}`,
     talk: 'TABLE TALK',
     squeeze: 'THE SQUEEZE',
     reckoning: 'THE RECKONING',
+    event: 'BETWEEN JOBS',
+    vote: 'THE TABLE DECIDES',
     accusation: 'NAME THE RAT',
     ledger: 'THE LEDGER',
   };
   $('#phaseLabel').textContent = labels[state.phase] ?? '';
+
+  const heat = $('#heat');
+  const fill = $('#heatFill');
+  if (!inPlay || !state.heat) heat.style.visibility = 'hidden';
+  else {
+    heat.style.visibility = 'visible';
+    fill.style.width = `${state.heat.value}%`;
+    fill.className = `heat-fill ${state.heat.key}`;
+    heat.title = `${state.heat.name} — ${state.heat.line}`;
+  }
+}
+
+function crewDot(player) {
+  if (!player?.crew || !state.crews) return '';
+  const crew = state.crews.find((c) => c.id === player.crew);
+  if (!crew) return '';
+  return `<span class="crew-dot" style="background:${crew.colour}" title="${esc(crew.name)}"></span>`;
 }
 
 function renderRail() {
-  if (!me.playerId || state.phase === 'lobby') { rail.classList.add('hidden'); return; }
+  if (state.phase === 'lobby' || state.local?.passing) { rail.classList.add('hidden'); return; }
   rail.classList.remove('hidden');
   const partnerIds = new Set((state.job?.partners ?? []).map((p) => p.id));
   rail.innerHTML = state.players.map((p) => {
@@ -164,10 +252,17 @@ function renderRail() {
     if (!p.connected && !p.bot) dot = 'gone';
     if (state.phase === 'squeeze' && p.locked) dot = 'locked';
     if (state.phase === 'reckoning' && p.ready) dot = 'locked';
+    if (state.phase === 'vote' && p.voted) dot = 'locked';
     if (state.phase === 'accusation' && p.accused) dot = 'locked';
+    const sittingOut = state.sittingOut?.id === p.id;
     return `<div class="${cls.join(' ')}">
-      <div class="n"><span class="dot ${dot}"></span>${esc(p.name)}${p.bot ? ' <span style="color:var(--bone-faint)">○</span>' : ''}</div>
-      <div class="s">${money(p.score)} ${p.markers ? `<span class="marks">${'†'.repeat(Math.min(p.markers, 4))}</span>` : ''}</div>
+      <div class="n"><span class="dot ${dot}"></span>${crewDot(p)}${esc(p.name)}${p.bot ? ' <span style="color:var(--bone-faint)">○</span>' : ''}</div>
+      <div class="s">${money(p.score)}
+        ${p.markers ? `<span class="marks">${'†'.repeat(Math.min(p.markers, 4))}</span>` : ''}
+        ${p.handCount ? `<span style="color:var(--bone-faint)">■${p.handCount}</span>` : ''}
+        ${sittingOut ? '<span style="color:var(--bone-faint)">OUT</span>' : ''}
+        ${p.played ? '<span style="color:var(--gold)">◆</span>' : ''}
+      </div>
     </div>`;
   }).join('');
 }
@@ -180,24 +275,40 @@ function viewDoor() {
   <section class="door">
     <h1 class="title">STANDOFF</h1>
     <p class="tagline">Two rooms. One question. However many friendships you brought with you.</p>
-    <form id="doorForm" autocomplete="off">
+
+    <form id="doorForm" autocomplete="off" style="margin-bottom:18px">
       <input type="text" id="nameInput" maxlength="18" placeholder="WHAT THEY CALL YOU" value="${esc(me.name)}" />
-      <button class="btn" id="createBtn" type="button">New Table</button>
-      <div class="row" style="gap:8px">
-        <input type="text" id="codeInput" maxlength="4" placeholder="CODE" value="${esc(preset)}" style="flex:1;text-transform:uppercase" />
-        <button class="ghost-btn" id="joinBtn" type="button" style="padding:12px 18px">Sit Down</button>
-      </div>
     </form>
+
+    <div class="mode-grid">
+      ${socketReady ? `
+        <button class="mode-btn" id="createBtn">
+          <span class="mb-t">NEW TABLE</span>
+          <span class="mb-s">Everybody on their own phone. Share a four-letter code.</span>
+        </button>
+        <div class="row" style="gap:8px">
+          <input type="text" id="codeInput" maxlength="4" placeholder="CODE" value="${esc(preset)}" style="flex:1;text-transform:uppercase" />
+          <button class="ghost-btn" id="joinBtn" style="padding:12px 18px">SIT DOWN</button>
+        </div>` : ''}
+      <button class="mode-btn" data-act="modeDevice">
+        <span class="mb-t">ONE DEVICE</span>
+        <span class="mb-s">Pass the phone around the table. It hides everybody's business between turns.</span>
+      </button>
+      <button class="mode-btn" data-act="modeSolo">
+        <span class="mb-t">AGAINST THE GHOSTS</span>
+        <span class="mb-s">On your own, against people who are not there. Good for learning what you are.</span>
+      </button>
+    </div>
+
     <div class="rule" style="max-width:340px;margin:30px auto"></div>
     <p class="stamp">how it works</p>
     <p style="max-width:44ch;margin:10px auto;color:var(--bone-dim);font-size:15px">
-      Every round you are locked in a room with somebody you know. You can talk first.
-      Then you choose, alone, whether to hold the line or take the deal.
-      Holding together pays. Folding on somebody who held pays better.
-      Everybody folding pays nobody.
+      Every round you are locked in a room with somebody you know. You can talk first, play a card,
+      and swear to anything you like. Then you choose, alone, whether to hold the line or take the deal.
+      Holding together pays. Folding on somebody who held pays better. Everybody folding pays nobody.
     </p>
     <p style="max-width:44ch;margin:10px auto;color:var(--bone-faint);font-size:14px;font-style:italic">
-      Best with 3–10 people in the same room, or on the same call, where you can hear the pause before somebody lies.
+      Three to ten people, in the same room or on the same call, where you can hear the pause before somebody lies.
     </p>
   </section>`;
 }
@@ -205,30 +316,59 @@ function viewDoor() {
 /* ------------------------------------------------------------------ lobby */
 
 function viewLobby() {
-  if (!me.playerId) return viewDoor();
-  const isHost = state.isHost;
+  const isLocal = mode !== 'online';
+  const profile = state.profile;
+  const roster = state.players;
+
   return `
   <section>
-    <p class="stamp">say these four letters out loud</p>
-    <div class="code-big">${esc(state.code)}</div>
-    <p style="color:var(--bone-dim);font-size:14px">
-      Anybody on this wifi opens this page and types it in. ${state.players.length}/${state.maxPlayers} seated.
-    </p>
+    ${isLocal ? `
+      <p class="stamp">${mode === 'solo' ? 'you and the ghosts' : 'everybody at this table, on this device'}</p>
+      <h2 style="font-family:var(--mono);letter-spacing:0.18em;font-size:clamp(22px,6vw,34px);margin:8px 0 4px">
+        ${mode === 'solo' ? 'AGAINST THE GHOSTS' : 'ONE DEVICE'}
+      </h2>
+    ` : `
+      <p class="stamp">say these four letters out loud</p>
+      <div class="code-big">${esc(state.code)}</div>
+      <p style="color:var(--bone-dim);font-size:14px">
+        Anybody on this wifi opens this page and types it in. ${roster.length}/${state.maxPlayers} seated.
+      </p>`}
+
+    ${isLocal && mode === 'device' ? `
+      <div class="row" style="gap:8px;margin:16px 0">
+        <input type="text" id="localName" maxlength="18" placeholder="ADD SOMEBODY" style="flex:1" />
+        <button class="ghost-btn" data-act="addLocal">SEAT THEM</button>
+      </div>` : ''}
 
     <div class="rule"></div>
 
     <div class="roster">
-      ${state.players.map((p) => `
+      ${roster.map((p) => `
         <div class="roster-row">
           <div>
-            <div class="who">${esc(p.name)}${p.isYou ? ' <span style="color:var(--gold);font-size:10px">— YOU</span>' : ''}${p.id === state.hostId ? ' <span style="color:var(--bone-faint);font-size:10px">— HOST</span>' : ''}</div>
-            ${p.bot ? `<div class="what">a ghost. ${esc(strategyLine(p.strategy))}</div>` : `<div class="what">${p.connected ? 'in the room' : 'stepped out'}</div>`}
+            <div class="who">${esc(p.name)}${p.isYou && !isLocal ? ' <span style="color:var(--gold);font-size:10px">— YOU</span>' : ''}${p.id === state.hostId && !isLocal ? ' <span style="color:var(--bone-faint);font-size:10px">— HOST</span>' : ''}</div>
+            ${p.bot ? `<div class="what">a ghost. ${esc(strategyLine(p.strategy))}</div>`
+              : `<div class="what">${isLocal ? 'at the table' : p.connected ? 'in the room' : 'stepped out'}</div>`}
           </div>
-          ${isHost && p.bot ? `<button class="link-btn" data-act="removeBot" data-id="${p.id}">show out</button>` : ''}
+          ${(state.isHost && p.bot) ? `<button class="link-btn" data-act="removeBot" data-id="${p.id}">show out</button>` : ''}
+          ${(isLocal && !p.bot && mode === 'device') ? `<button class="link-btn" data-act="removeLocal" data-id="${p.id}">remove</button>` : ''}
         </div>`).join('')}
     </div>
 
-    ${isHost ? `
+    ${roster.length >= 2 && profile ? `
+      <div class="profile-box">
+        <div class="pn">${esc(profile.name)} · ${roster.length} AT THE TABLE</div>
+        <div class="pb">${esc(profile.blurb)}</div>
+        <ul>${profile.features.map((f) => `<li>${esc(f)}</li>`).join('')}</ul>
+      </div>
+      <p style="color:var(--bone-faint);font-size:13px;margin-top:-6px">
+        The night changes shape as people arrive. Seat somebody else and this box changes with it.
+      </p>` : `
+      <p class="waiting" style="text-align:center;padding:10px">
+        ${mode === 'device' ? 'Seat at least two people.' : 'Waiting for another body.'}
+      </p>`}
+
+    ${state.isHost ? `
       <div class="rule"></div>
       <p class="stamp">the arrangement</p>
       <div class="row" style="margin:12px 0 18px">
@@ -238,25 +378,27 @@ function viewLobby() {
             ${[3, 4, 5, 6, 7, 8, 10].map((n) => `<option value="${n}" ${n === state.config.rounds ? 'selected' : ''}>${n}</option>`).join('')}
           </select>
         </div>
-        <div class="setting">
-          pace
-          <select id="paceSel" style="width:auto">
-            ${['relaxed', 'normal', 'brisk'].map((p) => `<option value="${p}" ${p === state.config.pace ? 'selected' : ''}>${p}</option>`).join('')}
-          </select>
-        </div>
-        <button class="ghost-btn ${state.config.timers ? 'on' : ''}" data-act="toggleTimers">${state.config.timers ? 'CLOCK ON' : 'NO CLOCK'}</button>
+        ${mode === 'online' ? `
+          <div class="setting">
+            pace
+            <select id="paceSel" style="width:auto">
+              ${['relaxed', 'normal', 'brisk'].map((p) => `<option value="${p}" ${p === state.config.pace ? 'selected' : ''}>${p}</option>`).join('')}
+            </select>
+          </div>
+          <button class="ghost-btn ${state.config.timers ? 'on' : ''}" data-act="toggleTimers">${state.config.timers ? 'CLOCK ON' : 'NO CLOCK'}</button>` : ''}
+        <button class="ghost-btn ${state.config.cards ? 'on' : ''}" data-act="toggleCards">${state.config.cards ? 'CARDS ON' : 'NO CARDS'}</button>
         <button class="ghost-btn" data-act="addBot">+ GHOST</button>
       </div>
-      <button class="btn" data-act="start" ${state.players.length < 2 ? 'disabled' : ''} style="width:100%">
-        ${state.players.length < 2 ? 'WAITING FOR SOMEBODY TO BETRAY' : `DEAL IN · ${state.players.length} PLAYERS · ${state.config.rounds} ROUNDS`}
+      <button class="btn" data-act="start" ${roster.length < 2 && mode !== 'solo' ? 'disabled' : ''} style="width:100%">
+        ${roster.length < 2 && mode !== 'solo' ? 'WAITING FOR SOMEBODY TO BETRAY'
+          : `DEAL IN · ${mode === 'solo' ? 'YOU AND THREE GHOSTS' : `${roster.length} PLAYERS`} · ${state.config.rounds} ROUNDS`}
       </button>
       <p style="color:var(--bone-faint);font-size:13px;text-align:center;margin-top:10px">
         Ghosts are stand-ins with fixed habits. Good for odd numbers and for finding out how you play.
       </p>
     ` : `<p class="waiting" style="text-align:center;padding:14px">Waiting on ${esc(state.players.find((p) => p.id === state.hostId)?.name ?? 'the host')} to deal.</p>`}
 
-    <div class="rule"></div>
-    ${chatBlock()}
+    ${mode === 'online' ? `<div class="rule"></div>${chatBlock()}` : ''}
   </section>`;
 }
 
@@ -274,7 +416,7 @@ function strategyLine(id) {
 function chatBlock() {
   const lines = (state.chat ?? []).map((c) =>
     `<div class="chatline ${c.kind === 'system' ? 'system' : ''}"><span class="who">${esc(c.name)}</span>${esc(c.text)}</div>`).join('');
-  const canChat = state.phase !== 'talk' && state.phase !== 'squeeze';
+  const canChat = !['talk', 'squeeze', 'vote', 'accusation'].includes(state.phase);
   return `
     <p class="stamp">the room</p>
     <div class="chatbox" id="chatbox">${lines || '<div class="chatline system">Quiet in here.</div>'}</div>
@@ -282,6 +424,36 @@ function chatBlock() {
       <input type="text" id="chatInput" maxlength="200" placeholder="SAY SOMETHING" style="flex:1" />
       <button class="ghost-btn" data-act="chat">SAY IT</button>
     </div>` : '<p class="waiting" style="font-size:13px">The rooms are separate. Use your whisper.</p>'}`;
+}
+
+/* -------------------------------------------------------------- act card */
+
+function viewAct() {
+  const a = state.act;
+  if (!a) return '<div class="big-note">Dealing.</div>';
+  return `
+  <section class="actcard">
+    <div class="an">${esc(a.name)}</div>
+    <div class="at">${esc(a.title)}</div>
+    <div class="al">${esc(a.line)}</div>
+    <div class="as">${esc(a.stakes)}</div>
+    ${state.isHost ? `<div class="row" style="justify-content:center;margin-top:30px"><button class="btn" data-act="skip">BEGIN</button></div>` : ''}
+  </section>`;
+}
+
+/* --------------------------------------------------------- pass the phone */
+
+function viewPass() {
+  return `
+  <section class="pass">
+    <div class="ph">hand it over</div>
+    <div class="pn">${esc(state.local.seatName ?? '')}</div>
+    <div class="pb">Nobody else should be looking at this screen. Take it, do your business, and pass it on.</div>
+    <button class="btn" data-act="seatTake">I’M ${esc((state.local.seatName ?? '').toUpperCase())}</button>
+    <p style="color:var(--bone-faint);font-size:12px;font-family:var(--mono);letter-spacing:0.2em;margin-top:22px">
+      ${state.local.seatIndex + 1} OF ${state.local.seatCount}
+    </p>
+  </section>`;
 }
 
 /* ------------------------------------------------------------- job header */
@@ -305,8 +477,15 @@ function jobCard(job, { showPressure = true } = {}) {
     : job.kind === 'trio'
       ? `three-handed · you, ${list}`
       : `you and ${list}`;
+  const cbLabel = {
+    grudge: 'THIS ONE HAS HISTORY',
+    feud: 'THIS ONE HAS A BODY COUNT',
+    clean: 'YOU TWO HAVE NEVER SLIPPED',
+    repeat: 'THIS KEEPS HAPPENING',
+  }[job.callback?.kind];
   return `
   <article class="dossier" data-case="NO. ${esc(job.caseNo)}">
+    ${cbLabel ? `<div class="callback-flag">${cbLabel}</div>` : ''}
     <p class="stamp">${esc(who)}</p>
     <h2>${esc(job.title)}</h2>
     ${job.setup.map((p) => `<p>${esc(p)}</p>`).join('')}
@@ -318,9 +497,10 @@ function jobCard(job, { showPressure = true } = {}) {
 
 function viewDeal() {
   const job = state.job;
-  if (!job) return `<div class="big-note">Sitting this one out. Watch.</div>`;
+  if (!job) return sittingOutNote();
   return `
   <section>
+    ${heatNote()}
     ${twistBanner()}
     ${jobCard(job)}
     <div class="rule"></div>
@@ -330,6 +510,29 @@ function viewDeal() {
     </p>
     ${state.isHost ? `<div class="row" style="justify-content:center;margin-top:12px"><button class="ghost-btn" data-act="skip">SKIP AHEAD</button></div>` : ''}
   </section>`;
+}
+
+function sittingOutNote() {
+  if (state.you?.sittingOut) {
+    return `<div class="big-note" style="padding:60px 20px">
+      <div class="stamp" style="margin-bottom:12px">you were told to lie low</div>
+      <p style="max-width:34ch;margin:0 auto;font-size:17px">
+        The table voted you off this one. You get a flat rate and an evening at home,
+        and you get to watch what everybody does when you are not in the room.
+      </p>
+      ${state.isHost ? `<div class="row" style="justify-content:center;margin-top:20px"><button class="ghost-btn" data-act="skip">GET ON WITH IT</button></div>` : ''}
+    </div>`;
+  }
+  return `<div class="big-note">You are not on this one. Watch.
+    ${state.isHost ? `<div class="row" style="justify-content:center;margin-top:16px"><button class="ghost-btn" data-act="skip">SKIP AHEAD</button></div>` : ''}
+  </div>`;
+}
+
+function heatNote() {
+  if (!state.heat || state.heat.key === 'quiet') return '';
+  return `<p class="stamp" style="margin-bottom:10px">
+    the table is <b style="color:${state.heat.key === 'warm' ? 'var(--gold)' : 'var(--blood-bright)'}">${esc(state.heat.name)}</b> · ${esc(state.heat.line)}
+  </p>`;
 }
 
 function payoffPanel(job) {
@@ -362,11 +565,67 @@ function payoffPanel(job) {
   return '';
 }
 
+/* ------------------------------------------------------------------- hand */
+
+function handPanel() {
+  const you = state.you;
+  if (!you || !state.config.cards) return '';
+  if (you.playedThisRound) {
+    return `<div class="hand-wrap">
+      <p class="stamp">you played</p>
+      <div class="pcard ${you.playedThisRound.face} played" style="margin-top:8px">
+        <span class="pc-face">${you.playedThisRound.face === 'up' ? 'FACE UP · ANNOUNCED' : 'FACE DOWN · SECRET'}</span>
+        <span class="pc-name">${esc(you.playedThisRound.name)}</span>
+        <span class="pc-text">${esc(you.playedThisRound.text)}</span>
+      </div>
+    </div>`;
+  }
+  if (!you.hand.length) return '';
+
+  if (pendingCard) {
+    const card = you.hand.find((c) => c.id === pendingCard);
+    if (card) {
+      const targets = state.players.filter((p) => !p.isYou);
+      return `<div class="hand-wrap">
+        <p class="stamp">${esc(card.name)} — on who?</p>
+        <div class="row tight" style="margin-top:8px">
+          ${targets.map((p) => `<button class="ghost-btn" data-act="playCard" data-card="${card.id}" data-target="${p.id}">${esc(p.name)}</button>`).join('')}
+          <button class="link-btn" data-act="cancelCard">never mind</button>
+        </div>
+      </div>`;
+    }
+  }
+
+  return `<div class="hand-wrap">
+    <p class="stamp">your hand · one card a round</p>
+    <div class="hand">
+      ${you.hand.map((c) => `
+        <button class="pcard ${c.face}" data-act="pickCard" data-card="${c.id}">
+          <span class="pc-face">${c.face === 'up' ? 'FACE UP' : 'FACE DOWN'}</span>
+          <span class="pc-name">${esc(c.name)}</span>
+          <span class="pc-text">${esc(c.text)}</span>
+        </button>`).join('')}
+    </div>
+    <p style="color:var(--bone-faint);font-size:12.5px;margin-top:2px">
+      Face-up cards are announced to the people you are working with. Face-down ones stay yours until the reckoning.
+    </p>
+  </div>`;
+}
+
+function declaredPanel() {
+  const declared = state.job?.declared ?? [];
+  if (!declared.length) return '';
+  return declared.map((d) => `<div class="declared">
+    <div class="dh">${esc(d.by)} PLAYED ${esc(d.card.name.toUpperCase())}${d.target ? ` ON ${esc(d.target.toUpperCase())}` : ''}</div>
+    <div class="db">${esc(d.card.text)}</div>
+  </div>`).join('');
+}
+
 /* ------------------------------------------------------------------- talk */
 
 function viewTalk() {
   const job = state.job;
-  if (!job) return `<div class="big-note">You are not on this one.</div>`;
+  if (!job) return sittingOutNote();
   const partners = job.talkPartners.map((p) => p.name).join(' and ') || 'nobody';
   const pledged = job.pledgedByYou;
   const openBook = state.twist?.id === 'openbook';
@@ -374,6 +633,7 @@ function viewTalk() {
   return `
   <section>
     ${twistBanner()}
+    ${declaredPanel()}
     <p class="stamp">you have a minute with ${esc(partners)}</p>
     <h2 style="font-family:var(--mono);letter-spacing:0.1em;font-size:19px;margin:6px 0 16px">${esc(job.title)}</h2>
 
@@ -408,10 +668,14 @@ function viewTalk() {
       </div>` : ''}
     </div>
 
+    ${handPanel()}
     ${markerPanel()}
     ${powerPanel()}
 
-    ${state.isHost ? `<div class="row" style="justify-content:center;margin-top:16px"><button class="ghost-btn" data-act="skip">EVERYBODY’S SAID ENOUGH</button></div>` : ''}
+    <div class="row" style="justify-content:center;margin-top:18px">
+      ${state.local ? `<button class="btn" data-act="seatDone">DONE — PASS IT ON</button>`
+        : state.isHost ? `<button class="ghost-btn" data-act="skip">EVERYBODY’S SAID ENOUGH</button>` : ''}
+    </div>
   </section>`;
 }
 
@@ -462,7 +726,7 @@ function powerPanel() {
 
 function viewSqueeze() {
   const job = state.job;
-  if (!job) return `<div class="big-note">You are not on this one.</div>`;
+  if (!job) return sittingOutNote();
   const chosen = job.yourChoice;
 
   return `
@@ -471,6 +735,13 @@ function viewSqueeze() {
     ${job.switched ? jobCard(job) : `
       <p class="stamp">${esc(job.title)} · no. ${esc(job.caseNo)}</p>
       <div class="pressure" style="margin:10px 0 18px">${esc(job.pressure)}</div>`}
+
+    ${declaredPanel()}
+
+    ${job.lookout?.length ? `<div class="twist-banner" style="border-color:var(--gold)">
+      <div class="tw-name">THE LOOKOUT</div>
+      <div class="tw-body">${job.lookout.map((l) => `${esc(l.name)} has locked in <b>${l.choice === 'stand' ? 'HOLD' : 'FOLD'}</b>`).join('. ')}.</div>
+    </div>` : ''}
 
     ${job.leak ? `<div class="twist-banner" style="border-color:var(--blood)">
       <div class="tw-name" style="color:var(--blood-bright)">THE WIRE</div>
@@ -506,6 +777,7 @@ function viewSqueeze() {
           ${job.matrix ? `<span class="c-pay">${money(job.matrix.T)} if they hold · ${money(job.matrix.P)} if they don’t</span>` : ''}
         </button>
       </div>
+      ${handPanel()}
       ${markerPanel()}`}
     ${state.you?.roundNote ? `<p class="waiting" style="text-align:center;margin-top:14px">${esc(state.you.roundNote)}</p>` : ''}
   </section>`;
@@ -514,8 +786,9 @@ function viewSqueeze() {
 /* -------------------------------------------------------------- reckoning */
 
 function viewReckoning() {
-  const mine = (state.reckoning ?? []).find((g) => g.yours);
-  const others = (state.reckoning ?? []).filter((g) => !g.yours);
+  const rows = state.reckoning ?? [];
+  const mine = rows.find((g) => g.yours);
+  const others = rows.filter((g) => !g.yours);
 
   const groupBlock = (g, isMine) => `
     <article class="dossier" data-case="${isMine ? 'YOUR JOB' : 'ELSEWHERE'}" style="margin-bottom:16px;border-left-color:${isMine ? 'var(--blood)' : 'var(--edge)'}">
@@ -524,10 +797,10 @@ function viewReckoning() {
         ${g.members.map((m) => `
           <div class="reveal-row ${m.choice ?? 'unknown'}">
             <div>
-              <div class="reveal-name">${esc(m.name)}${m.brokePledge ? '<span class="tag broken">BROKE A PLEDGE</span>' : m.pledged ? '<span class="tag kept">KEPT HIS WORD</span>' : ''}${m.wentQuiet ? '<span class="tag quiet">SAID NOTHING</span>' : ''}</div>
+              <div class="reveal-name">${esc(m.name)}${m.brokePledge ? '<span class="tag broken">BROKE A PLEDGE</span>' : m.pledged ? '<span class="tag kept">KEPT HIS WORD</span>' : ''}${m.wentQuiet ? '<span class="tag quiet">SAID NOTHING</span>' : ''}${m.card ? `<span class="tag" style="color:var(--gold)">${esc(m.card.name.toUpperCase())}</span>` : ''}</div>
               <div class="reveal-verdict ${m.choice ?? ''}">${m.choice === 'stand' ? 'HELD THE LINE' : m.choice === 'fold' ? 'TOOK THE DEAL' : 'YOU WERE NOT TOLD'}</div>
             </div>
-            <div class="reveal-amount ${m.total == null ? '' : m.total >= 0 ? 'pos' : 'neg'}">${m.total == null ? '\u2014' : money(m.total)}</div>
+            <div class="reveal-amount ${m.total == null ? '' : m.total >= 0 ? 'pos' : 'neg'}">${m.total == null ? '—' : money(m.total)}</div>
           </div>`).join('')}
       </div>
       <div class="narration" data-type="${esc(g.id)}">${esc(g.narration)}</div>
@@ -535,21 +808,24 @@ function viewReckoning() {
       ${isMine && g.yourLines.length ? `<div class="rule"></div><div class="lines">
         ${g.yourLines.map((l) => `<div class="line"><b>${esc(l.label)}</b><span class="amt ${l.amount >= 0 ? 'pos' : 'neg'}">${money(l.amount)}</span></div>`).join('')}
       </div>` : ''}
+      ${!isMine && g.allLines ? `<div class="rule"></div>${g.allLines.map((p) => `
+        <div class="lines" style="margin-bottom:8px">
+          <div class="line" style="border:none"><b style="color:var(--bone)">${esc(p.name)}</b><span></span></div>
+          ${p.lines.map((l) => `<div class="line"><b>${esc(l.label)}</b><span class="amt ${l.amount >= 0 ? 'pos' : 'neg'}">${money(l.amount)}</span></div>`).join('')}
+        </div>`).join('')}` : ''}
     </article>`;
 
   return `
   <section>
     <p class="stamp">round ${state.round} of ${state.totalRounds} · ${esc(state.twist?.name ?? '')}</p>
     ${mine ? groupBlock(mine, true) : ''}
-    ${others.length ? `<p class="stamp" style="margin:26px 0 10px">meanwhile, in the other rooms</p>${others.map((g) => groupBlock(g, false)).join('')}` : ''}
+    ${others.length ? `<p class="stamp" style="margin:26px 0 10px">${mine ? 'meanwhile, in the other rooms' : 'what happened tonight'}</p>${others.map((g) => groupBlock(g, false)).join('')}` : ''}
     <div class="row" style="justify-content:center;margin-top:20px">
-      <button class="btn" data-act="ready">${state.round >= state.totalRounds ? 'TO THE LEDGER' : 'NEXT JOB'}</button>
+      <button class="btn" data-act="ready">${state.round >= state.totalRounds ? 'TO THE LEDGER' : 'NEXT'}</button>
     </div>
-    <p class="waiting" style="text-align:center;margin-top:10px">
+    ${mode === 'online' ? `<p class="waiting" style="text-align:center;margin-top:10px">
       ${state.players.filter((p) => p.ready).length} of ${state.players.filter((p) => !p.bot).length} ready.
-    </p>
-    <div class="rule"></div>
-    ${chatBlock()}
+    </p><div class="rule"></div>${chatBlock()}` : ''}
   </section>`;
 }
 
@@ -571,6 +847,59 @@ function runTypewriters() {
     };
     step();
   }
+}
+
+/* ------------------------------------------------------------------ event */
+
+function viewEvent() {
+  const e = state.event;
+  if (!e) return '<div class="big-note">Nothing doing.</div>';
+  return `
+  <section>
+    <article class="eventcard">
+      <div class="eh">between jobs</div>
+      <div class="en">${esc(e.name)}</div>
+      <div class="el">${esc(e.line)}</div>
+      <div class="eb" data-type="ev-${esc(e.id)}-${state.round}">${esc(e.narration ?? '')}</div>
+      ${e.tally?.length ? `<div class="rule"></div><p class="stamp">the vote</p>
+        <div class="tally">
+          ${e.votes.map((v) => `<div class="tally-row"><span>${esc(v.voter)} named ${esc(v.target)}</span></div>`).join('')}
+        </div>` : ''}
+      ${e.lines?.length ? `<div class="rule"></div><div class="lines">
+        ${e.lines.map((l) => `<div class="line"><b>${esc(l.name)} — ${esc(l.label)}</b><span class="amt ${l.amount >= 0 ? 'pos' : 'neg'}">${money(l.amount)}</span></div>`).join('')}
+      </div>` : ''}
+    </article>
+    <div class="row" style="justify-content:center;margin-top:20px">
+      <button class="btn" data-act="skip">ON WITH IT</button>
+    </div>
+  </section>`;
+}
+
+/* ------------------------------------------------------------------- vote */
+
+function viewVote() {
+  const v = state.voteState;
+  if (!v) return '<div class="big-note">Counting.</div>';
+  const voted = v.yourVote;
+  return `
+  <section>
+    <article class="eventcard">
+      <div class="eh">the table decides</div>
+      <div class="en">${esc(v.name)}</div>
+      <div class="el">${esc(v.line)}</div>
+      <div class="eb">${esc(v.question)}</div>
+    </article>
+    ${voted ? `<div class="big-note">
+      You named <b style="font-family:var(--mono);letter-spacing:0.1em">${esc(state.players.find((p) => p.id === voted)?.name ?? '?')}</b>.
+      <div style="margin-top:10px;font-size:14px">${v.cast} of ${state.players.length} have said a name.</div>
+    </div>` : `
+      <p class="stamp" style="margin:22px 0 10px">say a name, out loud, with your own in the record</p>
+      <div class="row" style="gap:10px">
+        ${state.players.filter((p) => !p.isYou).map((p) => `
+          <button class="ghost-btn" data-act="vote" data-id="${p.id}" style="padding:14px 18px;font-size:13px">${esc(p.name)}</button>`).join('')}
+      </div>`}
+    ${state.local && voted ? `<div class="row" style="justify-content:center;margin-top:18px"><button class="btn" data-act="seatDone">PASS IT ON</button></div>` : ''}
+  </section>`;
 }
 
 /* ------------------------------------------------------------- accusation */
@@ -610,21 +939,33 @@ function viewLedger() {
     <h2 style="font-family:var(--mono);letter-spacing:0.16em;font-size:clamp(22px,6vw,36px);margin:8px 0 6px">
       ${esc(winner.name.toUpperCase())} WALKS
     </h2>
-    <p style="color:var(--bone-dim);font-style:italic;margin-bottom:22px">
-      ${esc(winnerLine(L))}
-    </p>
+    <p style="color:var(--bone-dim);font-style:italic;margin-bottom:22px">${esc(winnerLine(L))}</p>
 
     <div class="standings">
       ${L.standings.map((s) => `
         <div class="standing ${s.rank === 1 ? 'first' : ''}">
           <div class="rank">${s.rank}</div>
           <div>
-            <div class="nm">${esc(s.name)}${s.bot ? ' <span style="color:var(--bone-faint);font-size:10px">GHOST</span>' : ''}</div>
-            <div class="rl">${s.role ? `${esc(s.role.name)} — ${esc(s.role.tag)}` : ''} · held ${s.stats.stands}, folded ${s.stats.folds}${s.stats.pledgesBroken ? `, broke ${s.stats.pledgesBroken} pledge${s.stats.pledgesBroken > 1 ? 's' : ''}` : ''}</div>
+            <div class="nm">${s.crew ? `<span class="crew-dot" style="background:${s.crew.colour}"></span>` : ''}${esc(s.name)}${s.bot ? ' <span style="color:var(--bone-faint);font-size:10px">GHOST</span>' : ''}</div>
+            <div class="rl">${s.role ? `${esc(s.role.name)} — ${esc(s.role.tag)}` : ''} · held ${s.stats.stands}, folded ${s.stats.folds}${s.stats.pledgesBroken ? `, broke ${s.stats.pledgesBroken} pledge${s.stats.pledgesBroken > 1 ? 's' : ''}` : ''}${s.stats.cardsPlayed ? `, played ${s.stats.cardsPlayed} card${s.stats.cardsPlayed > 1 ? 's' : ''}` : ''}</div>
           </div>
           <div class="amt">${money(s.score)}</div>
         </div>`).join('')}
     </div>
+
+    ${L.crews ? `<p class="stamp">the crews</p>
+      <div class="lines" style="margin:10px 0 24px">
+        ${L.crews.totals.map((c) => `<div class="line"><b>${esc(c.name)}${c.name === L.crews.winner ? ' — on top' : ''}</b><span class="amt ${c.name === L.crews.winner ? 'pos' : ''}">${money(c.total)}</span></div>`).join('')}
+      </div>` : ''}
+
+    ${L.secrets.length ? `
+      <p class="stamp">what actually happened</p>
+      <div class="dossier" style="margin:10px 0 24px;border-left-color:var(--gold)">
+        <h2 style="font-size:17px">The table was told one thing</h2>
+        <div class="lines">
+          ${L.secrets.map((s) => `<div class="line"><b>Round ${s.round} · ${esc(s.job)} — ${esc(s.name)} was shown ${s.shown === 'stand' ? 'holding the line' : 'folding'}</b><span class="amt neg">${s.truth === 'fold' ? 'ACTUALLY FOLDED' : 'ACTUALLY HELD'}</span></div>`).join('')}
+        </div>
+      </div>` : ''}
 
     ${L.rat ? `
       <p class="stamp">the rat</p>
@@ -653,10 +994,7 @@ function viewLedger() {
 
     <div class="lines" style="margin-bottom:26px">
       ${L.bonds.slice().sort((a, b) => b.trust - a.trust).map((b) => `
-        <div class="line">
-          <b>${esc(b.aName)} &amp; ${esc(b.bName)}</b>
-          <span>${bondVerdict(b)}</span>
-        </div>`).join('')}
+        <div class="line"><b>${esc(b.aName)} &amp; ${esc(b.bName)}</b><span>${bondVerdict(b)}</span></div>`).join('')}
     </div>
 
     ${L.awards.length ? `<p class="stamp">the record</p>
@@ -673,21 +1011,24 @@ function viewLedger() {
     ${L.finalLines.length ? `<p class="stamp">settled after the last job</p>
       <div class="lines" style="margin:10px 0 26px">
         ${L.finalLines.flatMap((f) => f.lines.map((l) =>
-          `<div class="line"><b>${esc(f.name)} — ${esc(l.label)}</b><span class="amt pos">${money(l.amount)}</span></div>`)).join('')}
+          `<div class="line"><b>${esc(f.name)} — ${esc(l.label)}</b><span class="amt ${l.amount >= 0 ? 'pos' : 'neg'}">${money(l.amount)}</span></div>`)).join('')}
       </div>` : ''}
 
     <p class="stamp">the whole night, job by job</p>
     <div style="margin:10px 0 26px">
       ${L.history.map((r) => `
         <details class="recap">
-          <summary><b>ROUND ${r.round}</b> \u00b7 ${esc(r.twist.name)}</summary>
+          <summary><b>ROUND ${r.round}</b> · ${esc(r.twist.name)}${r.heat != null ? ` · heat ${r.heat}` : ''}</summary>
           ${r.groups.map((g) => `
             <div class="recap-job">
-              <div class="recap-title">${esc(g.title)}${g.switched ? ' <span style="color:var(--gold)">\u00b7 SWITCHED</span>' : ''}</div>
+              <div class="recap-title">${esc(g.title)}${g.switched ? ' <span style="color:var(--gold)">· SWITCHED</span>' : ''}${g.callback ? ' <span style="color:var(--blood-bright)">· CALLBACK</span>' : ''}</div>
               <div class="recap-line">${g.members.map((m) =>
-                `<span style="color:${m.choice === 'stand' ? 'var(--green)' : 'var(--blood-bright)'}">${esc(m.name)} ${m.choice === 'stand' ? 'held' : 'folded'}</span>`).join(' \u00b7 ')}</div>
+                `<span style="color:${m.trueChoice === 'stand' ? 'var(--green)' : 'var(--blood-bright)'}">${esc(m.name)} ${m.trueChoice === 'stand' ? 'held' : 'folded'}</span>`).join(' · ')}</div>
               <div class="recap-narr">${esc(g.narration)}</div>
             </div>`).join('')}
+          ${r.cards.length ? `<div class="recap-job"><div class="recap-title">CARDS</div><div class="recap-narr">
+            ${r.cards.map((c) => `${esc(c.by)} played ${esc(c.cardId)}${c.target ? ` on ${esc(c.target)}` : ''}${c.cancelled ? ' (cancelled)' : ''}`).join(' · ')}
+          </div></div>` : ''}
         </details>`).join('')}
     </div>
 
@@ -696,8 +1037,7 @@ function viewLedger() {
       ? `<button class="btn" data-act="rematch" style="width:100%">SAME TABLE, NEW NIGHT</button>`
       : '<p class="waiting" style="text-align:center">Waiting on the host to call another one.</p>'}
     <p style="text-align:center;margin-top:12px"><button class="link-btn" data-act="leave">leave the table</button></p>
-    <div class="rule"></div>
-    ${chatBlock()}
+    ${mode === 'online' ? `<div class="rule"></div>${chatBlock()}` : ''}
   </section>`;
 }
 
@@ -710,6 +1050,7 @@ function nameList(names) {
 function winnerLine(L) {
   const w = L.standings[0];
   const s = w.stats;
+  if (s.secretFolds > 0) return `Folded ${s.secretFolds} time${s.secretFolds > 1 ? 's' : ''} that nobody ever found out about, and is going home with the most money and a clean reputation.`;
   if (s.folds === 0) return 'Never folded once, and still came out on top. That is either integrity or extremely good luck.';
   if (s.betrayals >= 3) return `Folded on people ${s.betrayals} times and is going home with the most money. Enjoy the drive.`;
   if (s.pledgesBroken > 0) return `Gave their word ${s.pledges} times and broke it ${s.pledgesBroken}. The money does not know the difference.`;
@@ -749,10 +1090,10 @@ function bondWeb(bonds, standings) {
     if (betrayals > 0) colour = '#b5232b';
     else if (b.mutualStand > 0) colour = '#5fa87c';
     if (b.mutualFold > 0 && betrayals === 0) dash = 'stroke-dasharray="4 5"';
-    const w = Math.min(6, 1 + b.rounds * 1.2);
+    const width = Math.min(6, 1 + b.rounds * 1.2);
     const op = betrayals > 0 ? 0.85 : 0.35 + (b.rounds > 0 ? (b.mutualStand / b.rounds) * 0.6 : 0);
     return `<line x1="${p1.x.toFixed(1)}" y1="${p1.y.toFixed(1)}" x2="${p2.x.toFixed(1)}" y2="${p2.y.toFixed(1)}"
-      stroke="${colour}" stroke-width="${w.toFixed(1)}" stroke-opacity="${op.toFixed(2)}" ${dash} stroke-linecap="round" />`;
+      stroke="${colour}" stroke-width="${width.toFixed(1)}" stroke-opacity="${op.toFixed(2)}" ${dash} stroke-linecap="round" />`;
   }).join('');
 
   const nodes = standings.map((s) => {
@@ -760,16 +1101,14 @@ function bondWeb(bonds, standings) {
     const anchor = Math.abs(Math.cos(p.a)) < 0.3 ? 'middle' : Math.cos(p.a) > 0 ? 'start' : 'end';
     const lx = Math.max(6, Math.min(w - 6, cx + Math.cos(p.a) * (r + 18)));
     const ly = cy + Math.sin(p.a) * (r + 18) + 4;
-    const label = s.name.length > 13 ? `${s.name.slice(0, 12)}\u2026` : s.name;
+    const label = s.name.length > 13 ? `${s.name.slice(0, 12)}…` : s.name;
     return `
       <circle cx="${p.x.toFixed(1)}" cy="${p.y.toFixed(1)}" r="7" fill="#0b0b0d" stroke="${s.rank === 1 ? '#c9a227' : '#e9e3d6'}" stroke-width="1.5" />
       <text x="${lx.toFixed(1)}" y="${ly.toFixed(1)}" text-anchor="${anchor}" fill="#9d9789"
         font-family="ui-monospace, 'Courier New', monospace" font-size="11" letter-spacing="1">${esc(label)}</text>`;
   }).join('');
 
-  return `<svg class="bondweb" viewBox="0 0 ${w} ${h}" role="img" aria-label="A web of who trusted whom">
-    ${edges}${nodes}
-  </svg>`;
+  return `<svg class="bondweb" viewBox="0 0 ${w} ${h}" role="img" aria-label="A web of who trusted whom">${edges}${nodes}</svg>`;
 }
 
 /* ------------------------------------------------------------ card modal */
@@ -777,6 +1116,7 @@ function bondWeb(bonds, standings) {
 function showCard() {
   const role = state?.you?.role;
   if (!role) return;
+  const crew = state.you.crew;
   $('#cardModalBody').innerHTML = `
     <div class="card-face" style="border-top-color:${role.colour}">
       <div class="ct">your card · nobody else sees this</div>
@@ -784,6 +1124,10 @@ function showCard() {
       <div class="ct" style="margin-top:2px">${esc(role.tag)}</div>
       <div class="cb">${esc(role.blurb)}</div>
       <div class="co">${esc(role.objective)}</div>
+      ${crew ? `<div class="rule"></div><div class="ct">your crew</div>
+        <div style="font-family:var(--mono);font-size:14px;color:${crew.colour}">${esc(crew.name)}</div>` : ''}
+      ${state.you.debts?.length ? `<div class="rule"></div><div class="ct">what you owe</div>
+        ${state.you.debts.map((d) => `<div style="font-size:14px;color:var(--blood-bright)">${esc(d.label)} — ${money(d.amount)}</div>`).join('')}` : ''}
     </div>`;
   $('#cardModal').classList.remove('hidden');
 }
@@ -796,11 +1140,33 @@ document.addEventListener('click', (ev) => {
   const act = btn.getAttribute('data-act');
 
   switch (act) {
+    case 'modeDevice': {
+      const name = ($('#nameInput')?.value ?? '').trim();
+      if (name) { me.name = name; localStorage.setItem('standoff.name', name); }
+      startLocal('device').then(() => { if (me.name) send({ t: 'addLocal', name: me.name }); });
+      break;
+    }
+    case 'modeSolo': {
+      const name = ($('#nameInput')?.value ?? '').trim() || 'You';
+      me.name = name;
+      localStorage.setItem('standoff.name', name);
+      startLocal('solo');
+      break;
+    }
+    case 'addLocal': {
+      const input = $('#localName');
+      if (input?.value.trim()) { send({ t: 'addLocal', name: input.value.trim() }); input.value = ''; }
+      break;
+    }
+    case 'removeLocal': send({ t: 'removeLocal', id: btn.dataset.id }); break;
     case 'removeBot': send({ t: 'removeBot', id: btn.dataset.id }); break;
     case 'addBot': send({ t: 'addBot' }); break;
     case 'toggleTimers': send({ t: 'config', timers: !state.config.timers }); break;
+    case 'toggleCards': send({ t: 'config', cards: !state.config.cards }); break;
     case 'start': send({ t: 'start' }); break;
     case 'skip': send({ t: 'skip' }); break;
+    case 'seatTake': send({ t: 'seatTake' }); break;
+    case 'seatDone': send({ t: 'seatDone' }); break;
     case 'whisper': {
       const box = $('#whisperBox');
       send({ t: 'whisper', text: box.value });
@@ -810,8 +1176,22 @@ document.addEventListener('click', (ev) => {
     case 'pledge': send({ t: 'pledge', value: btn.dataset.val === '1' }); break;
     case 'marker': send({ t: 'marker' }); break;
     case 'power': send({ t: 'power', target: btn.dataset.id }); break;
+    case 'pickCard': {
+      const id = btn.dataset.card;
+      const card = state.you?.hand.find((c) => c.id === id);
+      if (card?.needsTarget) { pendingCard = id; render(); }
+      else send({ t: 'card', card: id });
+      break;
+    }
+    case 'playCard': {
+      send({ t: 'card', card: btn.dataset.card, target: btn.dataset.target });
+      pendingCard = null;
+      break;
+    }
+    case 'cancelCard': pendingCard = null; render(); break;
     case 'choose': send({ t: 'choose', choice: btn.dataset.choice }); break;
     case 'ready': send({ t: 'ready' }); break;
+    case 'vote': send({ t: 'vote', target: btn.dataset.id }); break;
     case 'accuse': send({ t: 'accuse', target: btn.dataset.id }); break;
     case 'rematch': typed = new Set(); send({ t: 'rematch' }); break;
     case 'chat': {
@@ -842,6 +1222,9 @@ document.addEventListener('keydown', (ev) => {
   if (ev.key === 'Enter' && ev.target.id === 'chatInput') {
     if (ev.target.value.trim()) { send({ t: 'chat', text: ev.target.value }); ev.target.value = ''; }
   }
+  if (ev.key === 'Enter' && ev.target.id === 'localName') {
+    if (ev.target.value.trim()) { send({ t: 'addLocal', name: ev.target.value.trim() }); ev.target.value = ''; }
+  }
   if (ev.key === 'Enter' && (ev.metaKey || ev.ctrlKey) && ev.target.id === 'whisperBox') {
     send({ t: 'whisper', text: ev.target.value });
     toast('Sent.');
@@ -849,14 +1232,14 @@ document.addEventListener('keydown', (ev) => {
   if (ev.key === 'Escape') $('#cardModal').classList.add('hidden');
 });
 
-// door buttons live outside the delegated set because they need the inputs
 document.addEventListener('click', (ev) => {
-  const id = ev.target.id;
+  const id = ev.target.closest('button')?.id;
   if (id !== 'createBtn' && id !== 'joinBtn') return;
   const name = ($('#nameInput')?.value ?? '').trim();
   if (!name) { toast('They need something to call you.'); $('#nameInput')?.focus(); return; }
   me.name = name;
   localStorage.setItem('standoff.name', name);
+  mode = 'online';
   if (id === 'createBtn') send({ t: 'create', name });
   else {
     const code = ($('#codeInput')?.value ?? '').trim().toUpperCase();
@@ -874,5 +1257,5 @@ $('#cardModal').addEventListener('click', (ev) => {
 /* -------------------------------------------------------------------- go */
 
 app.innerHTML = viewDoor();
-connect();
+serverPresent().then((live) => { if (live) connect(); else render(); });
 requestAnimationFrame(tickTimer);

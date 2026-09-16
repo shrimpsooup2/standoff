@@ -1,7 +1,7 @@
 import { randomBytes, randomUUID } from 'node:crypto';
-import { Game } from './game/engine.js';
-import { BOT_NAMES, STRATEGIES } from './game/bots.js';
-import { makeRng, roomCode } from './game/rng.js';
+import { Game } from '../public/game/engine.js';
+import { BOT_NAMES, STRATEGIES } from '../public/game/bots.js';
+import { makeRng, roomCode } from '../public/game/rng.js';
 
 const ROOM_TTL_MS = 6 * 60 * 60 * 1000;   // rooms live six hours, then the lights go off
 const EMPTY_TTL_MS = 20 * 60 * 1000;
@@ -222,6 +222,8 @@ export function handleMessage(rooms, socket, raw) {
       g.advancePhase();
       break;
     case 'whisper': res = g.whisper(pid, msg.text); break;
+    case 'card': res = g.playCard(pid, msg.card, msg.target ?? null); break;
+    case 'vote': res = g.castVote(pid, msg.target); break;
     case 'pledge': res = g.pledge(pid, msg.value); break;
     case 'marker': res = g.callMarker(pid); break;
     case 'power': res = g.usePower(pid, msg.target); break;

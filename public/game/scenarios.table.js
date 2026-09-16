@@ -102,6 +102,102 @@ export const TABLE_SCENARIOS = [
     },
   },
   {
+    id: 'collection',
+    title: 'The Collection Run',
+    setup: [
+      '{n} names on a list, {n} of you, one afternoon. Everything collected goes into one bag, the bag goes upstairs, and what comes back down is multiplied and split evenly.',
+      'Nobody follows anybody on a collection run. The entire trade would collapse in a week if anybody did.',
+    ],
+    pressure: 'Some of those names will say they have nothing. You are the only person who will ever know whether they said it.',
+    stand: { label: 'EVERYTHING IN THE BAG', blurb: 'Every dollar you collect goes in. The bag comes back bigger and gets cut evenly.' },
+    fold: { label: 'SOME OF IT IN THE BAG', blurb: 'Nobody followed you. Nobody can follow you. The bag still gets cut evenly.' },
+    outcomes: {
+      allStand: 'Every dollar went in the bag and the bag came back heavy enough that the man upstairs said the word "good," which he says maybe twice a year.',
+      allFold: 'Everybody held something back. The bag was so light that the man upstairs did not say anything at all, which is much worse, and the run has been reassigned.',
+      mixed: '{standerNames} put in everything. {folderNames} did not. The bag came back and was split {n} ways evenly, in one room, with everybody watching everybody count.',
+    },
+  },
+  {
+    id: 'lawyerfund',
+    title: 'The Defence Fund',
+    setup: [
+      'One lawyer, {n} clients, and a strategy that only works if everybody is paying for the same lawyer to tell everybody the same thing.',
+      'Pay in and the joint defence holds: one story, one bill, one outcome. Keep your money and get your own guy — who will, being good at his job, immediately advise you to sell out everybody in this room.',
+    ],
+    pressure: 'The arraignment is Thursday. Whoever has their own lawyer by Thursday will be very obvious on Thursday.',
+    stand: { label: 'PAY THE JOINT FEE', blurb: 'One lawyer, one story. It protects everybody, including whoever is quietly not paying.' },
+    fold: { label: 'GET YOUR OWN GUY', blurb: 'Keep your money, take the joint defence’s protection anyway, and have somebody in your corner who only works for you.' },
+    outcomes: {
+      allStand: 'One lawyer, {n} clients, one story, told identically {n} times. She got all of it thrown out by lunchtime on Thursday and then billed accordingly, and everybody paid without complaint.',
+      allFold: '{n} separate lawyers arrived at the same courthouse on the same Thursday, each advising their client to be the first one to talk. It went exactly how you would expect.',
+      mixed: '{standerNames} paid into the joint defence. {folderNames} arrived with their own counsel, which everybody noticed in the corridor before anybody said a word.',
+    },
+  },
+  {
+    id: 'roof',
+    title: 'The Roof Over The Club',
+    setup: [
+      'The roof has been going for three winters. Everybody has put a bucket under it. Nobody has put money into it.',
+      'The building is owned by all of you, on paper, in a structure designed by a lawyer who has since been disbarred for unrelated reasons.',
+    ],
+    pressure: 'A structural engineer has used the phrase "within the year," and the card game is still upstairs, and everybody still goes there every single night.',
+    stand: { label: 'PUT IN FOR THE ROOF', blurb: 'Pay your share. The roof goes over everybody, including whoever did not pay.' },
+    fold: { label: 'LET SOMEBODY ELSE', blurb: 'There are {n} of you. The roof gets fixed or it doesn’t, and either way you are under it.' },
+    outcomes: {
+      allStand: 'It was done by October. Nobody mentioned it again, and the buckets went into a cupboard, and this is the single most functional thing this group has ever achieved together.',
+      allFold: 'Nobody paid. The roof came in during the first week of February, at four in the morning, onto a card table. The club is gone. Everybody meets at a diner now and it is not the same.',
+      mixed: '{standerNames} paid for the roof. {folderNames} sit under it every night, in the warm, and everybody knows the arithmetic of who bought the warmth.',
+    },
+  },
+  {
+    id: 'silentpartner',
+    title: 'Buying Out Uncle Ray',
+    setup: [
+      'Uncle Ray has held a third of everything since 1988 and has not done a day’s work since 1991. He would like to retire to Florida and would like to be paid for the privilege.',
+      'If all {n} of you put in, Ray goes, and the third he was taking gets divided among everybody forever.',
+    ],
+    pressure: 'Ray only needs the full number. He does not care whose money it is and he will never be told.',
+    stand: { label: 'PUT IN YOUR THIRD', blurb: 'Pay in. Ray goes, and everybody — payers and non-payers alike — collects for the rest of time.' },
+    fold: { label: 'KEEP IT, RAY STILL GOES', blurb: 'If everybody else pays, Ray still goes, and you still collect. That is just how buyouts work.' },
+    outcomes: {
+      allStand: 'Ray got his number, Ray got his condo, and every person in this room got a permanent raise on the same afternoon. Ray sends a card at Christmas that nobody reads.',
+      allFold: 'Nobody put in. Ray is still taking his third. Ray will be taking his third at everybody’s funeral, from Florida, where he has gone anyway on the money he is still taking.',
+      mixed: '{standerNames} paid for the buyout. {folderNames} did not, and are collecting exactly the same increase, forever, which is a fact that is going to be mentioned at every dinner from now on.',
+    },
+  },
+  {
+    id: 'lastnames',
+    title: 'The List Of Names',
+    setup: [
+      'The DA has offered the same thing to all {n} of you: one name each, and the person who gives the name is not on anybody else’s list.',
+      'Nobody knows who anybody else is going to name. That is not an oversight in the offer. That is the offer.',
+    ],
+    pressure: 'A name given by one person is a rumour. The same name given by three people is an indictment, and nobody is being told who else is in the building.',
+    stand: { label: 'NO NAMES', blurb: 'Give them nothing. It only works if it is unanimous, and you cannot see anybody else.' },
+    fold: { label: 'GIVE ONE NAME', blurb: 'One name buys your way out. Everyone else’s name is still on the table for everyone else.' },
+    outcomes: {
+      allStand: 'Not one name, out of {n} people, in {n} separate rooms, on the same afternoon. The DA went home and told somebody at dinner that he had never seen anything like it and did not entirely mean it as a compliment.',
+      allFold: 'Everybody gave a name. The names, laid side by side, describe this entire table completely. Nobody bought anything. Everybody paid.',
+      mixed: '{standerNames} gave nothing. {folderNames} gave a name each, and the names are now on a board in an office, arranged in a shape that everybody in this room is part of.',
+    },
+  },
+  {
+    id: 'inheritance',
+    title: 'The Old Man’s Estate',
+    setup: [
+      '{don} left no will that anybody can find and {n} people with an equally reasonable claim to the same set of assets.',
+      'There is a version of this where everybody agrees to a clean even split and it takes an afternoon. There is another version where lawyers get involved and it takes nine years and costs more than the estate.',
+    ],
+    pressure: 'Any one of you can file a claim. One claim forces everybody into the long version. The person who files first gets the best of the long version.',
+    stand: { label: 'AGREE THE SPLIT', blurb: 'Even shares, one afternoon, everybody walks away with something and nobody has to see a courtroom.' },
+    fold: { label: 'FILE A CLAIM', blurb: 'Get in first. The long version costs everybody, but it costs the people who did not file considerably more.' },
+    outcomes: {
+      allStand: 'An even split, agreed in an afternoon, around a kitchen table, by people who all had a lawyer’s number in their pocket and did not use it. The old man would have been insufferable about it.',
+      allFold: 'Every single person filed. {n} competing claims on one estate. It is now year two. The lawyers have been paid more than the house is worth and everybody still comes to the same funerals.',
+      mixed: '{standerNames} agreed to the split. {folderNames} filed. Everybody is going to court now, which is what filing means, which is what {folderNames} knew when they filed.',
+    },
+  },
+  {
     id: 'laststandoff',
     title: 'The Last Standoff',
     final: true,
@@ -153,6 +249,54 @@ export const TRIO_SCENARIOS = [
       allStand: 'All three held, including the cousin, who nobody expected to hold and who has not stopped bringing it up since. He has earned the right. He will be at every Christmas from here on.',
       allFold: 'Three statements, three versions, three people who each assumed the other two would be the loyal ones. It was never a two-man job. It was never a job at all after that afternoon.',
       mixed: '{standerNames} held. {folderNames} did not. The cousin, for the record, will be told a simplified version of this by somebody at Christmas.',
+    },
+  },
+  {
+    id: 'middleman',
+    title: 'The Middle Man',
+    setup: [
+      'Three people, and one of them has been standing between the other two for so long that neither of them knows how to talk to the other directly.',
+      'Tonight there are three rooms and no middle. Everybody is talking to everybody, for the first time, about a thing that has always gone through one person.',
+    ],
+    pressure: 'A structure that runs on one person being in the middle does not survive a night where everybody can see everybody.',
+    stand: { label: 'KEEP THE STRUCTURE', blurb: 'Hold, and let the arrangement survive the night. It only needs everybody.' },
+    fold: { label: 'GO AROUND HIM', blurb: 'The middle only exists because everybody agreed to it. Stop agreeing.' },
+    outcomes: {
+      allStand: 'All three held and the arrangement survived, which nobody expected and which the middle man has quietly decided to take personal credit for.',
+      allFold: 'Everybody went around everybody. There is no middle now, and no structure, and three people who are going to have to learn to speak to each other directly at the age they are.',
+      mixed: '{standerNames} held the structure. {folderNames} went around it. In a room of three, going around somebody means going around them in front of the third person, who watched.',
+    },
+  },
+  {
+    id: 'threeenvelopes',
+    title: 'Three Envelopes, Two Full',
+    setup: [
+      'Three envelopes went out on Friday. Two of them were correct. One of them was light by a specific and deliberate amount.',
+      'All three of you have now had the weekend to notice, and all three of you have spent it wondering whether the other two noticed, and whether either of them was the reason.',
+    ],
+    pressure: 'The man who packed the envelopes is dead. This is not suspicious; he was ninety-one. It does, however, mean nobody can ask.',
+    stand: { label: 'MINE WAS FINE', blurb: 'Say your envelope was correct and let it be nobody’s problem. It only works if all three say it.' },
+    fold: { label: 'MINE WAS LIGHT', blurb: 'Complain first. The complaint gets believed in the order it arrives.' },
+    outcomes: {
+      allStand: 'All three said theirs was fine. One of them was lying, and all three of them know one of them was lying, and the number in question was small enough that this is now permanent.',
+      allFold: 'All three complained. All three cannot be right. The family has decided that the envelopes were all correct and that this crew is expensive to deal with.',
+      mixed: '{standerNames} said nothing. {folderNames} complained, and got believed, and the ones who said nothing are now a very specific kind of suspect.',
+    },
+  },
+  {
+    id: 'threeseats',
+    title: 'A Car With Three Seats',
+    setup: [
+      'Two in the front, one in the back, and a two hundred mile drive that everybody has done a dozen times without incident.',
+      'The person in the back can hear everything the front says. The front cannot see the back without turning around, and nobody turns around.',
+    ],
+    pressure: 'At the far end there is a man with three separate offers and the patience to make them one at a time.',
+    stand: { label: 'NOBODY SAYS ANYTHING', blurb: 'Three people, one car, one story on the way home.' },
+    fold: { label: 'TAKE YOUR OFFER', blurb: 'He is making three offers because he only needs one of them taken.' },
+    outcomes: {
+      allStand: 'Three offers made, three offers refused, two hundred miles home with the radio on. Nobody discussed it in the car and nobody has discussed it since and it is the proudest any of them have been in years.',
+      allFold: 'All three took it. They drove home together afterwards, which is the detail that gets left out when this story is told, because it is unbearable.',
+      mixed: '{standerNames} refused. {folderNames} did not. Then all three got back in the same car for two hundred miles, and somebody had to pick the music.',
     },
   },
 ];

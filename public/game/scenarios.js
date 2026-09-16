@@ -1,8 +1,9 @@
 import { PAIR_SCENARIOS } from './scenarios.pair.js';
 import { TABLE_SCENARIOS, TRIO_SCENARIOS } from './scenarios.table.js';
+import { CALLBACK_SCENARIOS, CALLBACKS_BY_KIND } from './scenarios.callback.js';
 import { rollDetails, fill, fillDeep } from './lexicon.js';
 
-export { PAIR_SCENARIOS, TABLE_SCENARIOS, TRIO_SCENARIOS };
+export { PAIR_SCENARIOS, TABLE_SCENARIOS, TRIO_SCENARIOS, CALLBACK_SCENARIOS };
 
 const CODAS = [
   'Somebody will bring this up at a wedding.',
@@ -40,27 +41,49 @@ function drawFrom(deck, key, all, rng, { final = false } = {}) {
  * Build one playable job for a group of players.
  * `members` are `{ id, name }`, in seating order.
  */
-export function makeJob(rng, { kind, members, deck, final = false }) {
-  const base =
-    kind === 'pair'
-      ? drawFrom(deck, 'pair', PAIR_SCENARIOS, rng)
-      : kind === 'trio'
-        ? drawFrom(deck, 'trio', TRIO_SCENARIOS, rng)
-        : drawFrom(deck, 'table', TABLE_SCENARIOS, rng, { final });
+export function makeJob(rng, { kind, members, deck, final = false, callback = null }) {
+  let base;
+  let ordered = members;
+
+  if (callback) {
+    // A job built out of what these two actually did to each other.
+    const pool = (CALLBACKS_BY_KIND[callback.kind] ?? []).filter(
+      (s) => !(deck.callbackUsed ?? []).includes(s.id),
+    );
+    const choices = pool.length ? pool : CALLBACKS_BY_KIND[callback.kind] ?? CALLBACK_SCENARIOS;
+    base = rng.pick(choices);
+    (deck.callbackUsed ??= []).push(base.id);
+    // {A} is the one with something to answer for
+    if (callback.subjectId) {
+      const subject = members.find((m) => m.id === callback.subjectId);
+      const rest = members.filter((m) => m.id !== callback.subjectId);
+      if (subject) ordered = [subject, ...rest];
+    }
+  } else {
+    base =
+      kind === 'pair'
+        ? drawFrom(deck, 'pair', PAIR_SCENARIOS, rng)
+        : kind === 'trio'
+          ? drawFrom(deck, 'trio', TRIO_SCENARIOS, rng)
+          : drawFrom(deck, 'table', TABLE_SCENARIOS, rng, { final });
+  }
 
   const details = rollDetails(rng);
-  const names = members.map((m) => m.name);
+  const names = ordered.map((m) => m.name);
   const ctx = {
     ...details,
     n: members.length,
     A: names[0] ?? 'Somebody',
     B: names[1] ?? 'Somebody Else',
     C: names[2] ?? 'The Third One',
+    lastJob: callback?.lastJob ?? 'the last one',
+    lastRound: callback?.lastRound ?? 1,
   };
 
   return {
     scenarioId: base.id,
     kind,
+    callback: callback ? { kind: callback.kind, lastJob: callback.lastJob, lastRound: callback.lastRound } : null,
     title: fill(base.title, ctx),
     caseNo: `${rng.int(60, 99)}-${String(rng.int(100, 999))}-${'ABCDEFGHJKLMNPRSTVWXYZ'[rng.int(0, 21)]}`,
     setup: fillDeep(base.setup, ctx),

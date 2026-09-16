@@ -51,6 +51,17 @@ class Client {
   }
 
   phase(p) { return this.until((c) => c.state?.phase === p, `phase ${p}`); }
+  /** Skip title cards, events and anything else that only needs a nudge. */
+  async skipTo(phase, others = [], max = 12) {
+    for (let i = 0; i < max; i++) {
+      if (this.state?.phase === phase) return this;
+      this.send({ t: 'skip' });
+      await new Promise((r) => setTimeout(r, 160));
+      for (const o of others) { /* let everyone catch up */ void o; }
+    }
+    await this.phase(phase);
+    return this;
+  }
   close() { this.ws.close(); }
 }
 
@@ -107,6 +118,9 @@ test('three friends play a whole night through real sockets', async () => {
 
   host.send({ t: 'start' });
   const all = [host, b, c];
+  await Promise.all(all.map((x) => x.phase('act')));
+  assert.ok(host.state.act.title, 'the night opens on an act card');
+  await host.skipTo('deal');
   await Promise.all(all.map((x) => x.phase('deal')));
   for (const x of all) assert.ok(x.state.you.role, 'everybody gets a card');
   for (const x of all) {
@@ -114,6 +128,7 @@ test('three friends play a whole night through real sockets', async () => {
   }
 
   for (let round = 1; round <= 3; round++) {
+    await host.skipTo('deal');
     await Promise.all(all.map((x) => x.phase('deal')));
     assert.equal(host.state.round, round);
     for (const x of all) assert.ok(x.state.job.setup.length > 0, 'everybody gets a job');
@@ -140,9 +155,25 @@ test('three friends play a whole night through real sockets', async () => {
       assert.ok(mine.narration.length > 30, 'the reckoning is narrated');
     }
     for (const x of all) x.send({ t: 'ready' });
-    if (round < 3) await Promise.all(all.map((x) => x.until((y) => y.state.round === round + 1, 'next round')));
+    if (round < 3) {
+      await host.until((y) => y.state.phase !== 'reckoning', 'the round to turn over');
+      // an event or a new act may sit between jobs
+      for (let i = 0; i < 8 && host.state.phase !== 'deal'; i++) {
+        if (host.state.phase === 'vote') {
+          for (const x of all) x.send({ t: 'vote', target: x.state.players.find((p) => !p.isYou).id });
+        } else {
+          host.send({ t: 'skip' });
+        }
+        await new Promise((r) => setTimeout(r, 180));
+      }
+      await Promise.all(all.map((x) => x.until((y) => y.state.round === round + 1, 'next round')));
+    }
   }
 
+  for (let i = 0; i < 8 && host.state.phase !== 'accusation'; i++) {
+    host.send({ t: 'skip' });
+    await new Promise((r) => setTimeout(r, 180));
+  }
   await Promise.all(all.map((x) => x.phase('accusation')));
   for (const x of all) {
     const target = x.state.players.find((p) => !p.isYou);
@@ -173,7 +204,7 @@ test('a dropped player can walk back in with their token', async () => {
 
   host.send({ t: 'config', rounds: 3, timers: false });
   host.send({ t: 'start' });
-  await host.phase('deal');
+  await host.skipTo('deal');
 
   friend.close();
   await new Promise((r) => setTimeout(r, 200));
@@ -197,7 +228,7 @@ test('the door is closed once the cards are dealt', async () => {
   await pal.until((x) => x.welcome);
 
   host.send({ t: 'start' });
-  await host.phase('deal');
+  await host.skipTo('deal');
 
   const latecomer = await new Client('Late').open();
   latecomer.send({ t: 'join', code, name: 'Late' });

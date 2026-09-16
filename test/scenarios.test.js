@@ -1,7 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { makeRng } from '../src/game/rng.js';
-import { makeDeck, makeJob, narrate, PAIR_SCENARIOS, TABLE_SCENARIOS, TRIO_SCENARIOS } from '../src/game/scenarios.js';
+import { makeRng } from '../public/game/rng.js';
+import { makeDeck, makeJob, narrate, PAIR_SCENARIOS, TABLE_SCENARIOS, TRIO_SCENARIOS } from '../public/game/scenarios.js';
+import { LEXICON } from '../public/game/lexicon.js';
 
 const members2 = [{ id: 'a', name: 'Andre' }, { id: 'b', name: 'Mo' }];
 const members4 = [...members2, { id: 'c', name: 'Kit' }, { id: 'd', name: 'Reza' }];
@@ -67,4 +68,39 @@ test('a deck deals every scenario before repeating one', () => {
     seen.push(makeJob(rng, { kind: 'pair', members: members2, deck }).scenarioId);
   }
   assert.equal(new Set(seen).size, PAIR_SCENARIOS.length);
+});
+
+test('lexicon entries that get used as sentence subjects read as noun phrases', () => {
+  // "{cop} has pulled the tower data" only works if {cop} has no trailing clause
+  for (const key of ['cop', 'don']) {
+    for (const entry of LEXICON[key]) {
+      assert.ok(!/,\s*(who|which|that)\b/.test(entry),
+        `${key} entry has a relative clause and will break mid-sentence: "${entry}"`);
+      assert.ok(!/\.$/.test(entry), `${key} entry should not end with a full stop: "${entry}"`);
+    }
+  }
+});
+
+test('callback jobs name the job and the person they are about', () => {
+  const rng = makeRng('cbtest');
+  const deck = makeDeck(rng);
+  for (const kind of ['grudge', 'feud', 'clean', 'repeat']) {
+    const job = makeJob(rng, {
+      kind: 'pair', members: members2, deck,
+      callback: { kind, subjectId: 'b', lastJob: 'The Haddock Problem', lastRound: 2 },
+    });
+    const prose = [job.title, ...job.setup, job.pressure].join('\n');
+    assert.deepEqual(unresolved(prose), [], `${kind} callback has unfilled slots`);
+    assert.equal(job.callback.kind, kind);
+    for (const combo of [['stand', 'stand'], ['fold', 'fold'], ['stand', 'fold']]) {
+      const text = narrate(job, members2, { a: combo[0], b: combo[1] });
+      assert.deepEqual(unresolved(text), [], `${kind} outcome ${combo.join('/')}`);
+    }
+  }
+});
+
+test('every scenario deck is deep enough that a long night does not repeat', () => {
+  assert.ok(PAIR_SCENARIOS.length >= 30, `only ${PAIR_SCENARIOS.length} pair jobs`);
+  assert.ok(TABLE_SCENARIOS.length >= 10, `only ${TABLE_SCENARIOS.length} table jobs`);
+  assert.ok(TRIO_SCENARIOS.length >= 4, `only ${TRIO_SCENARIOS.length} trio jobs`);
 });

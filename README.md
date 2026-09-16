@@ -3,89 +3,123 @@
 A multiplayer game of trust, betrayal and organised crime, for a group of friends
 who would like to find out some things about each other.
 
-It is a prisoner's dilemma wearing a very nice suit.
+It is a prisoner's dilemma wearing a very nice suit and holding a hand of cards.
+
+## Play it
+
+**Three ways, and they all use the same game.**
+
+| | |
+|---|---|
+| **New table** | Everybody on their own phone. One person runs the server, reads four letters out loud, everybody else types them in. |
+| **One device** | Pass the phone around the table. It hides everybody's business between turns with a "hand it to Mo" card. |
+| **Against the ghosts** | On your own, against bots with fixed, legible habits. |
 
 ```
-node server.js
+node server.js      # then open http://localhost:8787
 ```
 
-Then open `http://localhost:8787`. One person hits **NEW TABLE** and reads the four
-letters out loud; everybody else types them in. Works best with 3–10 people in the
-same room, or on the same call, where you can hear the pause before somebody lies.
+The server prints your LAN address on boot so people on the same wifi can just type
+it in. No dependencies, no build step, no accounts.
 
-No dependencies. No build step. No accounts. One file to run.
+**On GitHub Pages** (or any static host) there is no server to keep a socket open,
+so the client runs the whole engine in the browser: *one device* and *against the
+ghosts* work exactly as they do locally, and the online option hides itself when
+nobody answers. `.github/workflows/pages.yml` publishes `public/` on every push to
+`main`; turn on Pages → Source: GitHub Actions and it deploys itself.
 
 ---
 
 ## What happens
 
-Every round, the table is cut into pairs — occasionally threes, and now and then
-the whole table at once — and each pair is handed a **job**: a short, specific,
-generated piece of organised-crime trouble that both of you are already in.
+The night runs in **three acts**. Act One is small stuff and everybody still being
+polite. Act Two is when somebody has been talking and the theories start costing
+money. Act Three is one room, one door, everything paying triple.
 
-A truck of haddock that is not haddock. A ledger piped in blue gel onto sheet
-cakes. A confession sung to the tune of *New York, New York* at somebody's
-fiftieth. Eleven years of the same alibi, delivered in the same eleven words,
-which the cell tower data has just contradicted.
+Each round, the table is cut into pairs — sometimes threes, every third job the
+whole table at once — and each pair gets a **job**: a short, specific, generated
+piece of organised-crime trouble you are both already in.
+
+A truck of haddock that is not haddock. A second set of books piped in blue gel
+onto sheet cakes, one of which went to a christening. A confession sung to the tune
+of *New York, New York* at somebody's fiftieth. Eleven years of the same alibi in
+the same eleven words, which the cell tower data has just contradicted. A tunnel
+that is forty-one feet long and stops eleven feet short of anything.
 
 Then:
 
-1. **The job** — everyone reads the dossier, and the night's twist.
-2. **Table talk** — you get a private whisper to your partner, and the option to
-   formally **give your word**. Pledges are visible. Breaking one is recorded
-   with your name on it.
+1. **The job** — everyone reads the dossier and the night's twist.
+2. **Table talk** — a private whisper to your partner, the option to formally
+   **give your word**, and one card from your hand.
 3. **The squeeze** — separately, alone, you choose. **Hold the line**, or **take
    the deal**. No take-backs.
-4. **The reckoning** — everything is revealed and narrated. Who held, who folded,
-   who swore on it first.
+4. **The reckoning** — everything revealed and narrated: who held, who folded, who
+   swore on it first.
+5. **Between jobs** — an event lands on the table. Sometimes the table has to vote.
 
-After the last job — always the whole table, in one room, with one door — the
-**ledger** opens: the money, the secret cards, the accusations, and a web of every
-bond at the table drawn in green and red.
+After the last job the **ledger** opens: the money, the secret cards, what actually
+happened versus what the table was told, and a web of every bond at the table drawn
+in green and red.
 
 ## Where it stops being a prisoner's dilemma
 
-The base game is the real thing: `T > R > P > S`, `2R > T + S`, generated fresh
-for every job so the size of the temptation keeps moving. On top of that:
+The base game is the real thing: `T > R > P > S`, `2R > T + S`, generated fresh per
+job so the size of the temptation keeps moving. On top of that:
 
-**Secret cards.** Everyone is dealt one at the start, revealed only at the ledger.
-The Rat is paid by the DA for every betrayal. The Saint collects a fortune only by
-never folding once. The Widow profits from being betrayed. The Bookkeeper skims
-the whole table and therefore quietly wants everyone to get along. At the end you
-find out your friend wasn't a monster — he was contractually obligated.
+**The hand.** Everybody holds cards and may play one a round, before choosing.
+**Face-up** cards are announced the moment they hit the table — *The Muscle* ("fold
+on me and you forfeit the lot"), *The Shakedown*, *The Godfather*, *The Loan Shark*.
+**Face-down** cards stay secret until the reckoning — *The Alibi* (you fold and the
+table is shown you holding, and the record agrees), *Insurance*, *The Lookout*,
+*The Set-Up*, *The Priest*, which quietly cancels whatever was aimed at you.
 
-**Twists.** Announced with the job, before anyone talks, so everyone is lying on
-top of the same shared fact. *Honour Among Thieves* triples mutual loyalty and
-turns the round into a stag hunt. *The Squeeze* makes mutual betrayal cost real
-money. *The Wire* leaks the first player to lock in. *Blind Alley* tells you what
-you earned and nothing else until the ledger. *The Switcheroo* re-cuts the pairs
-**after** table talk, so your promise ends up in somebody else's hands.
+**Heat.** A table-wide meter. Every fold makes noise, every held line quiets it
+down. The louder the table gets, the sweeter the DA's offers become — and at
+boiling point the vans arrive at six in the morning and everybody pays.
 
-**Markers.** Fold on somebody who held, and they walk away holding a marker. They
-can call it in on a later round: if you fold on them again, you forfeit the entire
-take and they collect half of it. Costly punishment, in an envelope.
+**Callbacks.** The game remembers. Put two people back in a room and the job is
+built out of what they actually did to each other: a ninety-minute drive with the
+person who folded on you at the haddock thing, a Sunday dinner where the seats were
+decided in 1994, a vouch that ties you to somebody who has already sold you once.
 
-**The whole table.** Every third round is a public-goods round — a tribute, a bail
-fund, a widow's pension. Put in and the pot grows and is split evenly, including
-with whoever didn't. Skim and you are richer than everyone. Both of those sentences
-are true at once, which is the whole problem.
+**Events and votes.** Between jobs: funerals everybody pays into, audits that go
+straight for whoever is winning, amnesties, leaks, a phone call somebody took that
+nobody can identify. With five or more, the table votes out loud, with their names
+on it: who takes the fall, who gets made, who has to sit the next one out.
 
-**Naming the rat.** Before the ledger, everyone points at who they think was on the
-payroll. Right is worth money. Wrong pays the rat.
+**Secret cards.** Dealt at the start, turned over at the ledger. The Rat is paid by
+the DA per betrayal. The Saint only profits by never folding once. The Widow
+profits from being betrayed. The Bookkeeper skims the whole table and therefore
+quietly needs everyone to get along.
+
+**Markers.** Fold on somebody who held and they walk away holding a marker. Call it
+in later and their next betrayal costs them the entire take.
+
+**Twists.** Announced before anyone talks. *Honour Among Thieves* triples mutual
+loyalty and turns the round into a stag hunt. *The Wire* leaks whoever locks in
+first. *Blind Alley* seals the whole round until the ledger. *The Switcheroo*
+re-cuts the pairs **after** table talk, so your promise ends up in somebody else's
+hands.
+
+## It changes shape with the table
+
+The night is dealt differently depending on who turned up, and the lobby shows you
+the shape before you start:
+
+| | |
+|---|---|
+| **2 — The Two-Hander** | Every job is the two of you, with a full memory of it. No rat, no votes, nowhere to hide. Seven rounds. |
+| **3 — The Three-Hander** | Pairs and three-handed rooms where the arithmetic of loyalty turns cruel. The Rat arrives. |
+| **4–6 — The Crew** | Whole-table jobs every third round, events between them, and votes with everybody's name attached. |
+| **7–10 — The Family** | The table splits into two crews with a shared purse. More events, bigger votes, four cards in hand. |
 
 ## The bonds
 
 The point of the ledger isn't the money. It's the record: who held for whom, how
-many times, and who was the first to stop. Every pair that was ever locked in a
-room together gets a line — green if it stayed clean, red if it didn't — plus the
-awards nobody wants (THE MARK, OATHBREAKER, JUDAS) and the one everybody does
-(BLOOD BROTHERS).
-
-## Ghosts
-
-Short a player, or want to see how you play? The host can seat **ghosts** — bots
-with fixed, legible habits. One gives back exactly what it gets. One forgives
-nothing, ever, once. One has never folded in its life. One is already on the phone.
+many times, and who was first to stop. Every pair who were ever in a room together
+gets a line — green if it stayed clean, red if it didn't — plus the awards nobody
+wants (THE MARK, OATHBREAKER, JUDAS) and the ones people are oddly proud of (BLOOD
+BROTHERS, THE MAGICIAN: folded, and the table never found out).
 
 ## Running it
 
@@ -93,12 +127,11 @@ nothing, ever, once. One has never folded in its life. One is already on the pho
 |---|---|
 | `npm start` | serve on `http://localhost:8787` |
 | `PORT=3000 npm start` | serve somewhere else |
-| `npm test` | 28 tests: payoff invariants, engine, and a full game over real sockets |
+| `npm test` | 42 tests: payoff invariants, card rules, information hiding, and a full night over real sockets |
 | `npm run dev` | restart on save |
 
-The server prints your LAN address on boot, so people on the same wifi can just
-type it into a phone. Sessions survive a dropped connection — reopen the page and
-you get your seat, your card and your job back.
+Sessions survive a dropped connection — reopen the page and you get your seat, your
+card, your hand and your job back.
 
 ## Layout
 
@@ -106,13 +139,16 @@ you get your seat, your card and your job back.
 server.js              http + static files + the socket upgrade
 src/net/wss.js         a small RFC 6455 server, no dependencies
 src/room.js            rooms, seats, reconnection tokens, the tick loop
-src/game/engine.js     the state machine: deal, talk, squeeze, reckoning, ledger
-src/game/scenarios.*   the writing, and the grammar that varies it
-src/game/payoffs.js    matrix generation under real dilemma constraints
-src/game/roles.js      the secret cards
-src/game/twists.js     the rule changes
-src/game/bots.js       the ghosts
-public/                the client: one page, one socket, one render function
+public/game/           the engine — plain ES modules, so it runs on both sides
+  engine.js            the state machine: act, deal, talk, squeeze, reckoning, event, vote, ledger
+  scenarios.*.js       the writing, the callbacks, and the grammar that varies it
+  cards.js             the hand
+  events.js            what happens between jobs
+  director.js          acts, crews, heat, and how the night scales with the table
+  payoffs.js           matrix generation under real dilemma constraints
+  roles.js twists.js bots.js
+public/net/local.js    the engine running in the page: pass-and-play and solo
+public/app.js          one page, one render function, three transports
 ```
 
 ## A note on playing it
