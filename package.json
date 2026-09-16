@@ -1,0 +1,15 @@
+{
+  "name": "standoff",
+  "version": "1.0.0",
+  "description": "A multiplayer game of trust, betrayal and organised crime. Bring friends. Lose them.",
+  "type": "module",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node --watch server.js",
+    "test": "node --test test/*.test.js"
+  },
+  "engines": { "node": ">=18" },
+  "license": "MIT",
+  "private": true
+}

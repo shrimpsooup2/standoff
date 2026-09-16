@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>STANDOFF</title>
+<meta name="description" content="A multiplayer game of trust, betrayal and organised crime. Bring friends. Lose them." />
+<meta name="theme-color" content="#0b0b0d" />
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' fill='%230b0b0d'/%3E%3Ctext x='16' y='23' font-size='20' font-family='Georgia,serif' fill='%23b5232b' text-anchor='middle'%3ES%3C/text%3E%3C/svg%3E" />
+<link rel="stylesheet" href="/style.css" />
+</head>
+<body>
+  <div class="grain" aria-hidden="true"></div>
+  <div class="vignette" aria-hidden="true"></div>
+
+  <header id="chrome" class="chrome hidden">
+    <div class="chrome-left">
+      <span class="wordmark">STANDOFF</span>
+      <span class="chip" id="roomChip"></span>
+    </div>
+    <div class="chrome-mid">
+      <span class="phase-label" id="phaseLabel"></span>
+      <div class="timer" id="timer"><div class="timer-fill" id="timerFill"></div></div>
+    </div>
+    <div class="chrome-right">
+      <span class="chip money" id="moneyChip"></span>
+      <button class="ghost-btn" id="cardBtn" title="Your secret card">CARD</button>
+    </div>
+  </header>
+
+  <main id="app" aria-live="polite"></main>
+
+  <aside id="rail" class="rail hidden" aria-label="The table"></aside>
+
+  <div id="cardModal" class="modal hidden" role="dialog" aria-modal="true">
+    <div class="modal-body" id="cardModalBody"></div>
+    <button class="ghost-btn modal-close" id="cardClose">CLOSE</button>
+  </div>
+
+  <div id="toasts" class="toasts" aria-live="assertive"></div>
+
+  <script type="module" src="/app.js"></script>
+</body>
+</html>
