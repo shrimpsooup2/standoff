@@ -242,6 +242,7 @@ public/net/room.js     tables, seats, tokens, host migration — the same file t
 public/net/local.js    the engine running in the page: pass-and-play and solo
 public/net/peer.js     browser-hosted multiplayer over WebRTC, for static hosting
 public/config.js       the one setting: where browsers get introduced to each other
+render.yaml Dockerfile deploying that introduction service without a terminal
 public/app.js          one page, one render function, four transports
 public/style.css       the table: green baize, one hard light, and paper you can pick up
 public/qr.js           a QR encoder, so joining is a scan instead of a spelling test
