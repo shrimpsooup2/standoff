@@ -266,3 +266,14 @@ test('the door is closed once the cards are dealt', async () => {
 
   [host, pal, latecomer, wrongRoom].forEach((x) => x.close());
 });
+
+test('the health probe hands the page an address a phone can reach', async () => {
+  const r = await fetch(URL_BASE + '/health');
+  const body = await r.json();
+  assert.ok(Array.isArray(body.lan), 'no lan addresses reported');
+  assert.equal(typeof body.port, 'number');
+  for (const address of body.lan) {
+    assert.ok(!/^(127\.|localhost)/.test(address), `${address} is not reachable from another device`);
+    assert.match(address, /^\d+\.\d+\.\d+\.\d+$/);
+  }
+});

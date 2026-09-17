@@ -373,3 +373,73 @@ test('the host reports whether it can actually save', async (t) => {
   assert.equal(typeof body.rooms, 'number');
   assert.equal(typeof body.uptime, 'number');
 });
+
+test('reloading the page in the lobby keeps your seat and your name', async (t) => {
+  const port = await freePort();
+  const host = await new Host(port, tempDir()).start();
+  t.after(() => host.stop());
+
+  const andre = await new Client('Andre', port).open();
+  andre.send({ t: 'create', name: 'Andre' });
+  await andre.until((c) => c.welcome, 'welcome');
+  const code = andre.welcome.code;
+
+  const mo = await new Client('Mo', port).open();
+  mo.send({ t: 'join', code, name: 'Mo' });
+  await mo.until((c) => c.welcome, 'welcome');
+  const token = mo.welcome.token;
+
+  // a reload: the socket goes, and a new one comes back with the same token
+  mo.close();
+  await sleep(300);
+
+  const again = await new Client('Mo', port).open();
+  again.send({ t: 'resume', code, token });
+  await again.until((c) => c.welcome, 'resumed');
+
+  assert.equal(again.welcome.token, token, 'they were handed a different seat');
+  assert.equal(again.errors.length, 0);
+  await again.until((c) => c.state, 'state');
+  const names = again.state.players.map((p) => p.name).sort();
+  assert.deepEqual(names, ['Andre', 'Mo'], `roster came back as ${names.join(', ')}`);
+  assert.ok(again.state.players.every((p) => p.name), 'somebody came back without a name');
+});
+
+test('a seat that has really gone is refused, not quietly replaced', async (t) => {
+  const port = await freePort();
+  const host = await new Host(port, tempDir()).start();
+  t.after(() => host.stop());
+
+  const andre = await new Client('Andre', port).open();
+  andre.send({ t: 'create', name: 'Andre' });
+  await andre.until((c) => c.welcome, 'welcome');
+  const code = andre.welcome.code;
+
+  const ghost = await new Client('Nobody', port).open();
+  ghost.send({ t: 'resume', code, token: 'a'.repeat(48) });
+  await ghost.until((c) => c.errors.length, 'a refusal');
+
+  assert.match(ghost.errors[0], /seat is gone/i);
+  assert.equal(ghost.welcome, null, 'an unknown token was handed a seat anyway');
+
+  // and the table is still just the one person, not one person and a blank
+  await andre.until((c) => c.state, 'state');
+  assert.equal(andre.state.players.length, 1, 'a nameless player was seated');
+});
+
+test('joining without a name is refused rather than seating a blank', async (t) => {
+  const port = await freePort();
+  const host = await new Host(port, tempDir()).start();
+  t.after(() => host.stop());
+
+  const andre = await new Client('Andre', port).open();
+  andre.send({ t: 'create', name: 'Andre' });
+  await andre.until((c) => c.welcome, 'welcome');
+  const code = andre.welcome.code;
+
+  const blank = await new Client('Blank', port).open();
+  blank.send({ t: 'join', code, name: '   ' });
+  await blank.until((c) => c.errors.length, 'a refusal');
+  assert.equal(blank.welcome, null);
+  assert.equal(andre.state.players.length, 1);
+});

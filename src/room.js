@@ -5,6 +5,7 @@ import { makeRng, roomCode } from '../public/game/rng.js';
 
 const ROOM_TTL_MS = 24 * 60 * 60 * 1000;   // a table lives a day, then the lights go off
 const EMPTY_TTL_MS = 6 * 60 * 60 * 1000;   // and six hours after the last person leaves
+const LOBBY_GRACE_MS = 45 * 1000;          // long enough to reload, or to follow a link
 const MAX_PLAYERS = 10;
 const MAX_CHAT = 60;
 const MAX_ROOMS = 200;
@@ -27,6 +28,7 @@ export class Room {
     this.game = new Game({ code });
     this.sockets = new Map();   // playerId -> Set<Socket>
     this.tokens = new Map();    // token -> playerId
+    this.leftLobbyAt = new Map(); // playerId -> when their socket went, in the lobby
     this.hostId = null;
     this.chat = [];
     this.createdAt = Date.now();
@@ -86,9 +88,11 @@ export class Room {
       this.sockets.delete(playerId);
       this.game.setConnected(playerId, false);
       if (this.game.phase === 'lobby') {
-        // nobody has committed a crime yet; no reason to hold a ghost seat
-        this.game.removePlayer(playerId);
-        for (const [tok, pid] of this.tokens) if (pid === playerId) this.tokens.delete(tok);
+        // Hold the seat for a moment rather than dropping them the instant the
+        // socket goes. Reloading the page, locking the phone and following a
+        // join link all look exactly like leaving, and losing your chair for
+        // any of them is the thing people notice.
+        this.leftLobbyAt.set(playerId, Date.now());
       }
       if (this.hostId === playerId) this.reassignHost();
     }
@@ -107,6 +111,23 @@ export class Room {
     if (this.hostId && this.hostId !== previous) {
       this.say('THE HOUSE', `${this.game.players.get(this.hostId).name} is running the table now.`, 'system');
     }
+  }
+
+  /** Drop anybody who left the lobby and did not come back. */
+  sweepLobby(now = Date.now()) {
+    if (this.game.phase !== 'lobby' || !this.leftLobbyAt.size) return false;
+    let changed = false;
+    for (const [playerId, at] of this.leftLobbyAt) {
+      if (this.sockets.has(playerId)) { this.leftLobbyAt.delete(playerId); continue; }
+      if (now - at < LOBBY_GRACE_MS) continue;
+      this.leftLobbyAt.delete(playerId);
+      if (!this.game.players.has(playerId)) continue;
+      this.game.removePlayer(playerId);
+      for (const [tok, pid] of this.tokens) if (pid === playerId) this.tokens.delete(tok);
+      if (this.hostId === playerId) this.reassignHost();
+      changed = true;
+    }
+    return changed;
   }
 
   issueToken(playerId) {
@@ -264,6 +285,7 @@ export class Rooms {
     for (const [code, room] of this.rooms) {
       try {
         if (room.expired(now)) { this.rooms.delete(code); changed = true; continue; }
+        if (room.sweepLobby(now)) { room.sync(true); changed = true; }
         const moved = room.game.tick(now);
         if (moved) { room.sync(true); changed = true; }
         else if (room.game.version !== room.lastVersion) { room.sync(); changed = true; }
@@ -303,6 +325,13 @@ export function handleMessage(rooms, socket, raw) {
     const room = msg.t === 'create' ? rooms.create() : rooms.get(msg.code);
     if (!room) return fail('No table by that name. Check the letters.');
 
+    // A resume is a claim on a seat, not a request for one. If the token has
+    // expired there is nothing to come back to, and falling through would seat
+    // a player with no name at all.
+    if (msg.t === 'resume' && !room.tokens.has(String(msg.token))) {
+      return socket.send({ t: 'error', msg: 'That seat is gone.', reset: true });
+    }
+
     if (msg.t === 'resume' && typeof msg.token === 'string' && room.tokens.has(msg.token)) {
       const playerId = room.tokens.get(msg.token);
       if (room.game.players.has(playerId)) {
@@ -310,6 +339,7 @@ export function handleMessage(rooms, socket, raw) {
         // somebody who was turned into a ghost while away is a person again
         if (player.bot && player.wasHuman !== false && room.tokens.get(msg.token)) player.bot = false;
         ctx.room = room; ctx.playerId = playerId;
+        room.leftLobbyAt.delete(playerId);
         room.attach(playerId, socket);
         if (!room.hostId) room.reassignHost();
         socket.send({ t: 'welcome', code: room.code, playerId, token: msg.token });
@@ -324,8 +354,10 @@ export function handleMessage(rooms, socket, raw) {
     }
     if (room.playerCount >= MAX_PLAYERS) return fail('The room only holds ten.');
 
+    const name = str(msg.name, 18).trim();
+    if (!name) return fail('They need something to call you.');
     const playerId = randomUUID();
-    const player = room.game.addPlayer({ id: playerId, name: str(msg.name, 18) });
+    const player = room.game.addPlayer({ id: playerId, name });
     const token = room.issueToken(playerId);
     ctx.room = room; ctx.playerId = playerId;
     room.attach(playerId, socket);

@@ -14,6 +14,83 @@ let local = null;
 let mode = null;                     // 'online' | 'device' | 'solo'
 let socketReady = false;
 let state = null;
+/**
+ * A join link carries the code, so nobody has to read four letters out loud and
+ * nobody has to type them. `?r=` is the one we write; `#CODE` still works
+ * because links get shared and pasted long after anybody remembers which.
+ */
+function codeFromUrl() {
+  let raw = '';
+  try { raw = new URL(location.href).searchParams.get('r') ?? ''; } catch { /* no URL */ }
+  if (!raw) raw = (location.hash ?? '').replace('#', '');
+  return raw.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 4);
+}
+
+const LOOPBACK = new Set(['localhost', '127.0.0.1', '[::1]', '::1', '']);
+
+/** Where other people's phones should point. Set from the health probe. */
+let lanOrigin = null;
+
+/** This room, on this device's own address. What belongs in the address bar. */
+function roomUrl(code) {
+  try {
+    const url = new URL(location.href);
+    url.hash = '';
+    url.search = `?r=${encodeURIComponent(code)}`;
+    return url.toString();
+  } catch {
+    return code;
+  }
+}
+
+/**
+ * The link you hand somebody else.
+ *
+ * The host almost always has this page open on localhost, and a QR code that
+ * says localhost is a QR code that works on exactly one device. When the server
+ * has told us an address other machines can reach, share that one instead.
+ */
+function joinUrl(code) {
+  try {
+    const url = new URL(roomUrl(code));
+    if (lanOrigin && LOOPBACK.has(url.hostname)) {
+      const lan = new URL(lanOrigin);
+      url.protocol = lan.protocol;
+      url.hostname = lan.hostname;
+      url.port = lan.port;
+    }
+    return url.toString();
+  } catch {
+    return code;
+  }
+}
+
+/** Take the room out of the address bar without reloading the page. */
+function clearRoomFromUrl() {
+  try {
+    const url = new URL(location.href);
+    url.search = '';
+    url.hash = '';
+    history.replaceState(null, '', url.toString());
+  } catch { /* history is not always ours to write */ }
+}
+
+let qrCache = { text: null, markup: '' };
+
+/** The join link as a QR, drawn once and kept until the link changes. */
+function qrFor(text) {
+  if (qrCache.text === text) return qrCache.markup;
+  if (!qrModule) return '';
+  let markup = '';
+  try {
+    markup = qrModule.svg(text, { size: 188, quiet: 3, dark: '#221a10', light: '#f7efdd' });
+  } catch { markup = ''; }
+  qrCache = { text, markup };
+  return markup;
+}
+
+let qrModule = null;
+
 function savedName() {
   try { return localStorage.getItem('standoff.name') ?? ''; } catch { return ''; }
 }
@@ -101,6 +178,11 @@ function renderLink() {
 function applyState(next) {
   const first = !state;
   state = next;
+  // put the room in the address bar so the host can hand somebody the URL from
+  // there, and so a refresh lands back at the same table
+  if (mode === 'online' && state.code && codeFromUrl() !== state.code) {
+    try { history.replaceState(null, '', roomUrl(state.code)); } catch { /* not ours */ }
+  }
   clockOffset = state.serverNow ? Date.now() - state.serverNow : 0;
   const key = `${state.phase}:${state.round}:${state.local?.seatIndex ?? 0}:${state.local?.passing ?? ''}`;
   if (key !== lastPhaseKey) {
@@ -126,6 +208,8 @@ async function serverPresent() {
     const res = await fetch(new URL('health', location.href), { cache: 'no-store' });
     if (!res.ok) return false;
     const body = await res.json();
+    const lan = Array.isArray(body?.lan) ? body.lan[0] : null;
+    if (lan) lanOrigin = `${location.protocol}//${lan}:${body.port ?? location.port}`;
     return !!body?.ok;
   } catch {
     return false;
@@ -151,8 +235,14 @@ function connect() {
     link.attempts = 0;
     setLink('open');
     const saved = readSession();
-    if (saved?.code && saved?.token) send({ t: 'resume', code: saved.code, token: saved.token });
-    else if (!mode) render();
+    if (saved?.code && saved?.token) {
+      // A cold page load has no mode yet, and send() only talks to the socket
+      // once the client believes it is online — so claiming the seat has to
+      // come first, or the resume goes into the void and the reload silently
+      // costs you your chair.
+      mode = 'online';
+      send({ t: 'resume', code: saved.code, token: saved.token });
+    } else if (!mode) render();                  // the door looks different online
     drainOutbox();
     clearInterval(heartbeat);
     // a phone that went to sleep looks identical to a dead server until you ask
@@ -171,7 +261,7 @@ function connect() {
       me.token = msg.token;
       me.code = msg.code;
       writeSession({ code: msg.code, token: msg.token });
-      try { history.replaceState(null, '', `#${msg.code}`); } catch { /* not allowed here */ }
+      try { history.replaceState(null, '', roomUrl(msg.code)); } catch { /* not allowed here */ }
       lastSeq = -1;
     } else if (msg.t === 'state') {
       if (mode !== 'online') return;
@@ -184,7 +274,12 @@ function connect() {
     } else if (msg.t === 'error') {
       // a table that no longer exists is worth forgetting, or every reload
       // tries to rejoin a game that ended days ago
-      if (/no table/i.test(msg.msg)) clearSession();
+      if (msg.reset || /no table/i.test(msg.msg)) {
+        clearSession();
+        // the socket is up and the link still names a room, so this lands them
+        // back on the one-tap door rather than on a stale screen
+        if (!state) { mode = null; render(); }
+      }
       toast(msg.msg);
     }
   };
@@ -369,7 +464,21 @@ function renderRail() {
 /* ------------------------------------------------------------------- door */
 
 function viewDoor() {
-  const preset = (location.hash ?? '').replace('#', '').toUpperCase().slice(0, 4);
+  const preset = codeFromUrl();
+  // arriving on somebody's link: there is nothing to choose, just say who you are
+  if (preset && socketReady) {
+    return `
+    <section class="door">
+      <h1 class="title">STANDOFF</h1>
+      <p class="tagline">Table ${esc(preset)} is expecting you.</p>
+      <form id="doorForm" autocomplete="off" class="quickjoin">
+        <input type="text" id="nameInput" maxlength="18" placeholder="WHAT THEY CALL YOU" value="${esc(me.name)}" />
+        <input type="hidden" id="codeInput" value="${esc(preset)}" />
+        <button class="btn" id="joinBtn" type="submit" style="width:100%">SIT DOWN AT ${esc(preset)}</button>
+      </form>
+      <button class="link-btn" data-act="forgetRoom" style="margin-top:16px">or start a table of your own</button>
+    </section>`;
+  }
   return `
   <section class="door">
     <h1 class="title">STANDOFF</h1>
@@ -426,12 +535,7 @@ function viewLobby() {
       <h2 style="font-family:var(--mono);letter-spacing:0.18em;font-size:clamp(22px,6vw,34px);margin:8px 0 4px">
         ${mode === 'solo' ? 'AGAINST THE GHOSTS' : 'ONE DEVICE'}
       </h2>
-    ` : `
-      <p class="stamp">say these four letters out loud</p>
-      <div class="code-big">${esc(state.code)}</div>
-      <p style="color:var(--ink-soft);font-size:14px">
-        Anybody on this wifi opens this page and types it in. ${roster.length}/${state.maxPlayers} seated.
-      </p>`}
+    ` : inviteBlock(roster)}
 
     ${isLocal && mode === 'device' ? `
       <div class="row" style="gap:8px;margin:16px 0">
@@ -505,6 +609,30 @@ function viewLobby() {
 
     ${mode === 'online' ? `<div class="rule"></div>${chatBlock()}` : ''}
   </section>`;
+}
+
+/**
+ * How people get in. A QR is the short path — point a camera at it and you are
+ * seated — with the link underneath for anybody in a group chat, and the four
+ * letters last, because somebody always ends up reading them out anyway.
+ */
+function inviteBlock(roster) {
+  const link = joinUrl(state.code);
+  const qr = qrFor(link);
+  return `
+    <p class="stamp">point a camera at this</p>
+    <div class="invite">
+      <div class="invite-qr">${qr || `<div class="code-big" style="margin:0">${esc(state.code)}</div>`}</div>
+      <div class="invite-side">
+        <div class="code-big">${esc(state.code)}</div>
+        <button class="ghost-btn" data-act="copyLink" style="width:100%">COPY THE LINK</button>
+        <p class="invite-url">${esc(link)}</p>
+        <p style="color:var(--ink-soft);font-size:13.5px;margin:0">
+          ${roster.length}/${state.maxPlayers} seated. Anybody on this wifi can scan it, tap the
+          link, or open the page and type ${esc(state.code)}.
+        </p>
+      </div>
+    </div>`;
 }
 
 function strategyLine(id) {
@@ -1371,6 +1499,36 @@ function showCard() {
   $('#cardModal').classList.remove('hidden');
 }
 
+/**
+ * Copy the join link. `navigator.clipboard` is not there on http:// pages or in
+ * older browsers, so fall back to selecting the text and letting them copy it
+ * themselves rather than doing nothing and looking broken.
+ */
+async function copyLink(btn) {
+  const link = joinUrl(state?.code ?? '');
+  let copied = false;
+  try {
+    await navigator.clipboard.writeText(link);
+    copied = true;
+  } catch { copied = false; }
+
+  if (copied) {
+    toast('link copied');
+    btn.textContent = 'COPIED';
+    setTimeout(() => { if (btn.isConnected) btn.textContent = 'COPY THE LINK'; }, 1600);
+    return;
+  }
+  const el = document.querySelector('.invite-url');
+  if (el) {
+    const range = document.createRange();
+    range.selectNodeContents(el);
+    const sel = window.getSelection();
+    sel?.removeAllRanges();
+    sel?.addRange(range);
+  }
+  toast('select the link and copy it');
+}
+
 /* ----------------------------------------------------------------- events */
 
 document.addEventListener('click', (ev) => {
@@ -1398,6 +1556,8 @@ document.addEventListener('click', (ev) => {
       break;
     }
     case 'hand': handUp = !handUp; render(); break;
+    case 'copyLink': copyLink(btn); break;
+    case 'forgetRoom': clearRoomFromUrl(); render(); break;
     case 'removeLocal': send({ t: 'removeLocal', id: btn.dataset.id }); break;
     case 'removeBot': send({ t: 'removeBot', id: btn.dataset.id }); break;
     case 'addBot': send({ t: 'addBot' }); break;
@@ -1473,9 +1633,21 @@ document.addEventListener('keydown', (ev) => {
   if (ev.key === 'Escape') $('#cardModal').classList.add('hidden');
 });
 
+document.addEventListener('submit', (ev) => {
+  if (ev.target.id !== 'doorForm') return;
+  ev.preventDefault();
+  // the quick-join door is a form so Enter works; route it like the button
+  if ($('#joinBtn')) enterRoom('joinBtn');
+});
+
 document.addEventListener('click', (ev) => {
   const id = ev.target.closest('button')?.id;
   if (id !== 'createBtn' && id !== 'joinBtn') return;
+  ev.preventDefault();
+  enterRoom(id);
+});
+
+function enterRoom(id) {
   const name = ($('#nameInput')?.value ?? '').trim();
   if (!name) { toast('They need something to call you.'); $('#nameInput')?.focus(); return; }
   me.name = name;
@@ -1487,7 +1659,7 @@ document.addEventListener('click', (ev) => {
     if (code.length !== 4) { toast('Four letters. Ask again.'); return; }
     send({ t: 'join', code, name });
   }
-});
+}
 
 $('#cardBtn').addEventListener('click', showCard);
 $('#cardClose').addEventListener('click', () => $('#cardModal').classList.add('hidden'));
@@ -1499,4 +1671,10 @@ $('#cardModal').addEventListener('click', (ev) => {
 
 app.innerHTML = viewDoor();
 serverPresent().then((live) => { if (live) connect(); else render(); });
+// the QR encoder is only ever needed in an online lobby, and it is not worth
+// blocking the door on; draw again if we are already somewhere it shows
+import('./qr.js').then((m) => {
+  qrModule = m;
+  if (state) render();
+}).catch(() => { /* no QR, the code and link still work */ });
 requestAnimationFrame(tickTimer);

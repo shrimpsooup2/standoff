@@ -11,7 +11,7 @@ It is a prisoner's dilemma wearing a very nice suit and holding a hand of cards.
 
 | | |
 |---|---|
-| **New table** | Everybody on their own phone. One person runs the server, reads four letters out loud, everybody else types them in. |
+| **New table** | Everybody on their own phone. One person runs the server and puts a QR code on the table; everybody else points a camera at it. |
 | **One device** | Pass the phone around the table. It hides everybody's business between turns with a "hand it to Mo" card. |
 | **Against the ghosts** | On your own, against bots with fixed, legible habits. |
 
@@ -19,9 +19,14 @@ It is a prisoner's dilemma wearing a very nice suit and holding a hand of cards.
 node server.js      # then open http://localhost:8787
 ```
 
-The host is just somebody's laptop. It prints your LAN address on boot so people on
-the same wifi type it straight into a phone. No dependencies, no build step, no
-accounts, and nothing that needs the internet.
+The host is just somebody's laptop. The lobby shows a QR code and a link, both
+pointing at the machine's address on the wifi rather than at localhost, so
+joining is one scan and a name. The four letters still work for anybody who
+would rather type them.
+
+No dependencies, no build step, no accounts, and nothing that needs the
+internet. The QR encoder is thirty lines of tables and a Reed-Solomon
+remainder, in `public/qr.js`, rather than a package.
 
 ### Start with a First Night
 
@@ -236,6 +241,7 @@ public/game/           the engine — plain ES modules, so it runs on both sides
 public/net/local.js    the engine running in the page: pass-and-play and solo
 public/app.js          one page, one render function, three transports
 public/style.css       the table: green baize, one hard light, and paper you can pick up
+public/qr.js           a QR encoder, so joining is a scan instead of a spelling test
 ```
 
 ## What it looks like

@@ -88,6 +88,11 @@ const server = http.createServer((req, res) => {
         players: [...rooms.rooms.values()].reduce((n, r) => n + r.connectedHumans, 0),
         saving: store.writable,
         uptime: Math.round(process.uptime()),
+        // The host usually opens this on localhost, and a QR saying "localhost"
+        // sends every phone in the room precisely nowhere. Hand the page an
+        // address that other machines can actually reach.
+        lan: addresses(),
+        port: PORT,
       }));
       return;
     }
@@ -191,7 +196,7 @@ server.listen(PORT, HOST, () => {
     '',
     restored
       ? `  ${restored} table${restored === 1 ? '' : 's'} picked up where they left off.`
-      : '  One person hits NEW TABLE and reads the four letters out loud.',
+      : '  One person hits NEW TABLE. Everybody else points a camera at the QR code.',
     store.writable ? '' : '  (not saving to disk — a restart will lose the night)',
     '',
   ].filter((l) => l !== '').join('\n') + '\n');
