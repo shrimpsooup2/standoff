@@ -14,6 +14,7 @@ let local = null;
 let mode = null;                     // 'online' | 'device' | 'solo'
 let peer = null;                     // a PeerHost or PeerGuest, when there is no server
 let signalUrl = null;                // where browsers get introduced to each other
+let signalProblem = null;            // why there is nowhere, when we can tell
 
 const isPeer = () => !!peer;
 const isOnline = () => mode === 'online';
@@ -39,6 +40,15 @@ async function findSignal() {
     const { SIGNAL_URL } = await import('./config.js');
     if (SIGNAL_URL) signalUrl = SIGNAL_URL;
   } catch { /* no config, no peer play */ }
+
+  // A browser will not open a plain socket from a secure page. It refuses
+  // quietly, which turns the single most likely setup mistake into ten minutes
+  // of wondering why nothing happens.
+  if (signalUrl && location.protocol === 'https:' && signalUrl.startsWith('ws://')) {
+    signalProblem = 'The signalling address has to be wss:// on an https page. '
+      + 'A plain ws:// socket is blocked before it is even tried.';
+    signalUrl = null;
+  }
 }
 let socketReady = false;
 let state = null;
@@ -606,9 +616,9 @@ function viewDoor() {
       </button>
     </div>
     ${canHost() ? '' : `<p class="no-table-note">
-      Everybody-on-their-own-phone needs somewhere for the phones to find each
-      other. Run <code>node server.js</code>, or point this page at one with
-      <code>?signal=</code>. The two below work with nothing at all.
+      ${signalProblem ? esc(signalProblem) : `Everybody-on-their-own-phone needs somewhere for the phones to find
+      each other. Run <code>node server.js</code>, or point this page at one
+      with <code>?signal=</code>. The two below work with nothing at all.`}
     </p>`}
 
     <div class="rule" style="max-width:340px;margin:30px auto"></div>
