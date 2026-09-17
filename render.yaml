@@ -1,0 +1,26 @@
+# One-click deploy of the introduction service.
+#
+# This is the thing that lets two browsers find each other so a table hosted on
+# GitHub Pages can have people at it. It passes a few kilobytes per player at
+# join time and is never used again — no game traffic, no scores, no whispers.
+#
+# On Render: New → Blueprint → point it at this repository. It reads this file
+# and does the rest. Then copy the https:// address it gives you, turn it into
+# a wss:// one, and put it in public/config.js:
+#
+#   export const SIGNAL_URL = 'wss://standoff-signal.onrender.com/signal';
+#
+# A free instance sleeps when idle and takes a moment to wake. The game retries
+# while that happens, so the only cost is the first person waiting a few seconds.
+
+services:
+  - type: web
+    name: standoff-signal
+    runtime: node
+    plan: free
+    buildCommand: npm install
+    startCommand: node server.js
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_VERSION
+        value: "22"

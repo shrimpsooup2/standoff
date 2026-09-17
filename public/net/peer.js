@@ -60,23 +60,45 @@ function channelSocket(channel, data = {}) {
   };
 }
 
-function openSignal(url, onMessage, onClose) {
-  const ws = new WebSocket(url);
-  ws.addEventListener('message', (ev) => {
-    let msg;
-    try { msg = JSON.parse(ev.data); } catch { return; }
-    onMessage(msg);
-  });
-  ws.addEventListener('close', () => onClose?.());
-  return {
-    ws,
-    ready: new Promise((res, rej) => {
-      ws.addEventListener('open', () => res(), { once: true });
-      ws.addEventListener('error', () => rej(new Error('cannot reach the broker')), { once: true });
-    }),
-    send(obj) { try { ws.send(json(obj)); } catch { /* not open */ } },
-    close() { try { ws.close(); } catch { /* already */ } },
-  };
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+/**
+ * Open the signalling socket, with patience.
+ *
+ * The obvious place to put this service is a free tier, and a free tier sleeps.
+ * The first connection after an idle spell fails outright while the thing wakes
+ * up, which would otherwise turn into "the button does nothing" for whoever is
+ * unlucky enough to start the evening.
+ */
+async function openSignal(url, onMessage, onClose, onWaking) {
+  let lastError = null;
+  for (let attempt = 0; attempt < 4; attempt++) {
+    if (attempt === 1) onWaking?.();
+    try {
+      return await new Promise((res, rej) => {
+        const ws = new WebSocket(url);
+        const fail = (err) => rej(err);
+        ws.addEventListener('error', () => fail(new Error('cannot reach the introduction service')), { once: true });
+        ws.addEventListener('open', () => {
+          ws.addEventListener('message', (ev) => {
+            let msg;
+            try { msg = JSON.parse(ev.data); } catch { return; }
+            onMessage(msg);
+          });
+          ws.addEventListener('close', () => onClose?.());
+          res({
+            ws,
+            send(obj) { try { ws.send(json(obj)); } catch { /* not open */ } },
+            close() { try { ws.close(); } catch { /* already */ } },
+          });
+        }, { once: true });
+      });
+    } catch (err) {
+      lastError = err;
+      await sleep(1200 * (attempt + 1));       // give it a chance to wake
+    }
+  }
+  throw lastError ?? new Error('cannot reach the introduction service');
 }
 
 /* ------------------------------------------------------------------ host -- */
@@ -100,12 +122,16 @@ export class PeerHost {
   get code() { return this.room.code; }
 
   async start(name) {
-    this.signal = openSignal(this.signalUrl, (m) => this.onSignal(m), () => {
-      // losing the broker only costs us new arrivals; the tables already
-      // connected keep playing, so this is a warning and not an ending
-      if (!this.closed) this.onError?.('lost the introduction service — people already here are fine');
-    });
-    await this.signal.ready;
+    this.signal = await openSignal(
+      this.signalUrl,
+      (m) => this.onSignal(m),
+      () => {
+        // losing the broker only costs us new arrivals; the tables already
+        // connected keep playing, so this is a warning and not an ending
+        if (!this.closed) this.onError?.('lost the introduction service \u2014 people already here are fine');
+      },
+      () => this.onError?.('waking the introduction service, one moment'),
+    );
     this.signal.send({ t: 'host', room: this.room.code });
 
     // seat the host themselves, through the same door everybody else uses
@@ -244,8 +270,12 @@ export class PeerGuest {
       };
     });
 
-    this.signal = openSignal(this.signalUrl, (m) => this.onSignal(m));
-    await this.signal.ready;
+    this.signal = await openSignal(
+      this.signalUrl,
+      (m) => this.onSignal(m),
+      null,
+      () => this.onError?.('waking the introduction service, one moment'),
+    );
     this.signal.send({ t: 'guest', room: this.code });
     await open;
     // The channel is up, but candidates can still be trickling and a better
