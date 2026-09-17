@@ -46,6 +46,42 @@ of *New York, New York* at somebody's fiftieth. Eleven years of the same alibi i
 the same eleven words, which the cell tower data has just contradicted. A tunnel
 that is forty-one feet long and stops eleven feet short of anything.
 
+### Every job offers its own way out
+
+There is no "cooperate" button. Each job offers the two, three or four things
+actually available to somebody standing in that particular room, and they are
+different every time. At the christening you can say baskets are baskets, quietly
+make up the missing number out of your own pocket, blame the function-room staff
+and cost a banqueting manager his job, or point at the eleven feet of driveway
+that only your friend walked down. On the ferry you can insist it is sports
+equipment, disclaim the tarp entirely and lose the load, or claim it loudly and
+demand a warrant — which either makes everything inside inadmissible forever or
+signs your name to it.
+
+None of them is the decent option. Every one of them costs somebody something,
+and what is *worth* doing depends entirely on what you think everybody else is
+about to do:
+
+| | |
+|---|---|
+| **hold the line** | Everything in. Best for the room, worst for you if the room does not do the same. |
+| **give them something** | Half in, half kept. Costs you if the room holds, covers you if it doesn't. |
+| **cover yourself** | Almost nothing in, and a floor under you. You will not do well. You cannot do badly. |
+| **bet on the room** | Pays far above anything else — but only if everybody genuinely holds. |
+| **make it cost them** | Strips most of what anybody who kept theirs was keeping. Costs you if nobody did. |
+| **take the weight** | More than your share goes in. It costs you and it makes everybody else richer. |
+
+Betting on the room wins when the room holds. Covering yourself wins when it
+doesn't. Nothing wins both ways, so every round is a read on the people in it.
+
+Roughly one round in six goes **loud**. Same dilemma, no chairs: a prison wall
+and two hundred feet of knotted bedsheet that holds one man at a time; a freight
+car with no brakes and a handbrake wheel that needs two people; nine feet between
+two roofs and a plank that takes a man at each end. Cooperating costs you your body
+instead of your freedom — hold the door, take your end, lie flat and crawl — and
+defecting is just running. Loud rounds pay more, run on a shorter clock, and get
+likelier as the night goes on.
+
 Then:
 
 1. **The job** — everyone reads the dossier and the night's twist.
@@ -76,6 +112,14 @@ table is shown you holding, and the record agrees), *Insurance*, *The Lookout*,
 **Heat.** A table-wide meter. Every fold makes noise, every held line quiets it
 down. The louder the table gets, the sweeter the DA's offers become — and at
 boiling point the vans arrive at six in the morning and everybody pays.
+
+**The loud ones.** 18 action jobs that show up rarely and mix in with everything
+else — a ladder in a prison yard that somebody has to foot, a lifeboat rated for
+six with more than six of you at the davits, a twin-engine plane four hundred
+pounds over on a short strip where four hundred pounds is either the bags or two
+people. These get their own ways out too: on the burning stairwell you can hold
+the door, wedge it with a fire bucket and go, or run *down* through the smoke on
+the theory that only the ground floor is alight.
 
 **Callbacks.** The game remembers. Put two people back in a room and the job is
 built out of what they actually did to each other: a ninety-minute drive with the
@@ -127,7 +171,7 @@ BROTHERS, THE MAGICIAN: folded, and the table never found out).
 |---|---|
 | `npm start` | serve on `http://localhost:8787` |
 | `PORT=3000 npm start` | serve somewhere else |
-| `npm test` | 42 tests: payoff invariants, card rules, information hiding, and a full night over real sockets |
+| `npm test` | 59 tests: the balance of every move, that the books add up, card rules, seizure ordering, every mix of moves narrating at every table size, information hiding, and a full night over real sockets |
 | `npm run dev` | restart on save |
 
 Sessions survive a dropped connection — reopen the page and you get your seat, your
@@ -141,11 +185,12 @@ src/net/wss.js         a small RFC 6455 server, no dependencies
 src/room.js            rooms, seats, reconnection tokens, the tick loop
 public/game/           the engine — plain ES modules, so it runs on both sides
   engine.js            the state machine: act, deal, talk, squeeze, reckoning, event, vote, ledger
-  scenarios.*.js       the writing, the callbacks, and the grammar that varies it
+  scenarios.*.js       the writing — desk jobs, the loud ones, callbacks, and the grammar that varies them
   cards.js             the hand
   events.js            what happens between jobs
   director.js          acts, crews, heat, and how the night scales with the table
-  payoffs.js           matrix generation under real dilemma constraints
+  options.js           the moves, what they trade off, and one resolver for any room size
+  payoffs.js           the size of the stake
   roles.js twists.js bots.js
 public/net/local.js    the engine running in the page: pass-and-play and solo
 public/app.js          one page, one render function, three transports

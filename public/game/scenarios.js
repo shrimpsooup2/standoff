@@ -1,9 +1,12 @@
 import { PAIR_SCENARIOS } from './scenarios.pair.js';
 import { TABLE_SCENARIOS, TRIO_SCENARIOS } from './scenarios.table.js';
 import { CALLBACK_SCENARIOS, CALLBACKS_BY_KIND } from './scenarios.callback.js';
+import { ACTION_PAIR, ACTION_TABLE, ACTION_TRIO } from './scenarios.action.js';
 import { rollDetails, fill, fillDeep } from './lexicon.js';
+import { traitsOf, isCooperative, isBetrayal } from './options.js';
 
 export { PAIR_SCENARIOS, TABLE_SCENARIOS, TRIO_SCENARIOS, CALLBACK_SCENARIOS };
+export { ACTION_PAIR, ACTION_TABLE, ACTION_TRIO };
 
 const CODAS = [
   'Somebody will bring this up at a wedding.',
@@ -22,8 +25,14 @@ export function makeDeck(rng) {
     pair: rng.shuffle(PAIR_SCENARIOS.map((s) => s.id)),
     trio: rng.shuffle(TRIO_SCENARIOS.map((s) => s.id)),
     table: rng.shuffle(TABLE_SCENARIOS.filter((s) => !s.final).map((s) => s.id)),
+    actionPair: rng.shuffle(ACTION_PAIR.map((s) => s.id)),
+    actionTrio: rng.shuffle(ACTION_TRIO.map((s) => s.id)),
+    actionTable: rng.shuffle(ACTION_TABLE.map((s) => s.id)),
   };
 }
+
+const ACTION_POOLS = { pair: ACTION_PAIR, trio: ACTION_TRIO, table: ACTION_TABLE };
+const ACTION_KEYS = { pair: 'actionPair', trio: 'actionTrio', table: 'actionTable' };
 
 function drawFrom(deck, key, all, rng, { final = false } = {}) {
   if (final) {
@@ -41,11 +50,14 @@ function drawFrom(deck, key, all, rng, { final = false } = {}) {
  * Build one playable job for a group of players.
  * `members` are `{ id, name }`, in seating order.
  */
-export function makeJob(rng, { kind, members, deck, final = false, callback = null }) {
+export function makeJob(rng, { kind, members, deck, final = false, callback = null, action = false }) {
   let base;
   let ordered = members;
 
-  if (callback) {
+  if (action && !callback) {
+    // The loud ones: same dilemma, no chairs.
+    base = drawFrom(deck, ACTION_KEYS[kind] ?? 'actionPair', ACTION_POOLS[kind] ?? ACTION_PAIR, rng);
+  } else if (callback) {
     // A job built out of what these two actually did to each other.
     const pool = (CALLBACKS_BY_KIND[callback.kind] ?? []).filter(
       (s) => !(deck.callbackUsed ?? []).includes(s.id),
@@ -59,7 +71,8 @@ export function makeJob(rng, { kind, members, deck, final = false, callback = nu
       const rest = members.filter((m) => m.id !== callback.subjectId);
       if (subject) ordered = [subject, ...rest];
     }
-  } else {
+  }
+  if (!base) {
     base =
       kind === 'pair'
         ? drawFrom(deck, 'pair', PAIR_SCENARIOS, rng)
@@ -83,6 +96,7 @@ export function makeJob(rng, { kind, members, deck, final = false, callback = nu
   return {
     scenarioId: base.id,
     kind,
+    tone: base.tone ?? 'standard',
     callback: callback ? { kind: callback.kind, lastJob: callback.lastJob, lastRound: callback.lastRound } : null,
     title: fill(base.title, ctx),
     caseNo: `${rng.int(60, 99)}-${String(rng.int(100, 999))}-${'ABCDEFGHJKLMNPRSTVWXYZ'[rng.int(0, 21)]}`,
@@ -91,9 +105,56 @@ export function makeJob(rng, { kind, members, deck, final = false, callback = nu
     stand: fillDeep(base.stand, ctx),
     fold: fillDeep(base.fold, ctx),
     outcomes: base.outcomes,
+    closers: base.closers ?? {},
+    options: buildOptions(base, ctx),
     coda: rng.pick(CODAS),
     ctx,
   };
+}
+
+
+/**
+ * Every job offers the moves that are actually available in that room. The
+ * first is always the loyal one and the last is always the worst one; what sits
+ * between them is the scenario's business, and some jobs have nothing between
+ * them at all.
+ */
+function buildOptions(base, ctx) {
+  const did = base.did ?? {};
+  const first = {
+    id: 'hold',
+    archetype: 'hold',
+    label: fill(base.stand.label, ctx),
+    blurb: fill(base.stand.blurb, ctx),
+    did: fill(did.stand ?? 'held the line', ctx),
+  };
+  const last = {
+    id: 'fold',
+    archetype: 'fold',
+    label: fill(base.fold.label, ctx),
+    blurb: fill(base.fold.blurb, ctx),
+    did: fill(did.fold ?? 'took the deal', ctx),
+  };
+  const middle = (base.extra ?? []).map((o, i) => ({
+    id: o.id ?? `mid${i}`,
+    archetype: o.archetype,
+    label: fill(o.label, ctx),
+    blurb: fill(o.blurb, ctx),
+    did: fill(o.did, ctx),
+  }));
+  return [first, ...middle, last];
+}
+
+/** Which of the written closers this mix of moves calls for. */
+export function outcomeShape(options) {
+  const coop = options.filter((o) => isCooperative(o)).length;
+  const bad = options.filter((o) => isBetrayal(o)).length;
+  const middle = options.length - coop - bad;
+  if (coop === options.length) return 'clean';
+  if (bad === options.length) return 'ruin';
+  if (middle === 0) return 'betrayed';
+  if (coop === 0 && bad === 0) return 'hedged';
+  return 'murky';
 }
 
 function listNames(names) {
@@ -104,30 +165,54 @@ function listNames(names) {
 }
 
 /**
- * Turn a resolved group into prose. `choices` maps player id -> 'stand'|'fold'.
+ * Turn a resolved group into prose.
+ *
+ * `picks` maps player id -> option id. The reckoning reads back what each
+ * person actually did, in their own job's words, and then closes with a written
+ * line chosen by the shape of the room.
  */
-export function narrate(job, members, choices) {
-  const standers = members.filter((m) => choices[m.id] === 'stand');
-  const folders = members.filter((m) => choices[m.id] !== 'stand');
+export function narrate(job, members, picks) {
+  const byId = Object.fromEntries(job.options.map((o) => [o.id, o]));
+  const chosen = members.map((m) => ({ member: m, option: byId[picks[m.id]] ?? job.options[0] }));
+
+  const coop = chosen.filter((c) => isCooperative(c.option));
+  const bad = chosen.filter((c) => isBetrayal(c.option));
+  const middle = chosen.filter((c) => !isCooperative(c.option) && !isBetrayal(c.option));
+
   const ctx = {
     ...job.ctx,
-    standCount: standers.length,
-    foldCount: folders.length,
-    standerNames: listNames(standers.map((m) => m.name)),
-    folderNames: listNames(folders.map((m) => m.name)),
+    standCount: coop.length,
+    foldCount: bad.length,
+    middleCount: middle.length,
+    standerNames: listNames(coop.map((c) => c.member.name)),
+    folderNames: listNames(bad.map((c) => c.member.name)),
+    middleNames: listNames(middle.map((c) => c.member.name)),
   };
 
-  if (job.kind === 'pair') {
-    if (folders.length === 0) return fill(job.outcomes.bothStand, ctx);
-    if (standers.length === 0) return fill(job.outcomes.bothFold, ctx);
-    return fill(job.outcomes.betray, {
-      ...ctx,
-      traitor: folders[0].name,
-      victim: standers[0].name,
-    });
+  const shape = outcomeShape(chosen.map((c) => c.option));
+  const pair = job.kind === 'pair' && members.length === 2;
+
+  // The written closers. The pure outcomes keep the paragraph the job was
+  // written with; anything murkier gets the line written for murky.
+  let closer;
+  if (shape === 'clean') closer = pair ? job.outcomes.bothStand : job.outcomes.allStand;
+  else if (shape === 'ruin') closer = pair ? job.outcomes.bothFold : job.outcomes.allFold;
+  else if (shape === 'betrayed') {
+    closer = pair ? job.outcomes.betray : job.outcomes.mixed;
+    if (pair) {
+      ctx.traitor = bad[0]?.member.name ?? 'somebody';
+      ctx.victim = coop[0]?.member.name ?? 'somebody';
+    }
+  } else {
+    closer = job.closers?.[shape] ?? job.closers?.murky
+      ?? (pair ? job.outcomes.bothFold : job.outcomes.mixed);
   }
 
-  if (folders.length === 0) return fill(job.outcomes.allStand, ctx);
-  if (standers.length === 0) return fill(job.outcomes.allFold, ctx);
-  return fill(job.outcomes.mixed, ctx);
+  // The pure outcomes were written as whole paragraphs and already say who did
+  // what, so they stand on their own. A murkier room needs the moves read back
+  // first, because the closing line cannot know which of them were taken.
+  const written = fill(closer, ctx);
+  if (shape === 'clean' || shape === 'ruin' || shape === 'betrayed') return written;
+  const recap = chosen.map((c) => `${c.member.name} ${fill(c.option.did, ctx)}.`).join(' ');
+  return `${recap}\n\n${written}`;
 }

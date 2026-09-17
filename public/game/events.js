@@ -10,11 +10,14 @@ function lastRound(game) {
   return game.history[game.history.length - 1] ?? null;
 }
 
+/** Who held the line last round, who sold out, and who did something in between. */
 function choicesLastRound(game) {
   const r = lastRound(game);
   const out = new Map();
   if (!r) return out;
-  for (const g of r.groups) for (const m of g.members) out.set(m.id, m.choice);
+  for (const g of r.groups) {
+    for (const m of g.members) out.set(m.id, m.held ? 'stand' : m.sold ? 'fold' : 'middle');
+  }
   return out;
 }
 

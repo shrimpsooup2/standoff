@@ -55,7 +55,9 @@ export function lastChoiceAgainst(game, pid, againstId) {
     for (const g of game.history[i].groups) {
       const ids = g.members.map((m) => m.id);
       if (ids.includes(pid) && ids.includes(againstId)) {
-        return g.members.find((m) => m.id === pid)?.choice ?? null;
+        const m = g.members.find((x) => x.id === pid);
+        if (!m) return null;
+        return m.held ? 'hold' : m.sold ? 'sell' : 'middle';
       }
     }
   }
@@ -67,59 +69,57 @@ export function everBetrayed(game, pid, byId) {
     for (const g of round.groups) {
       const ids = g.members.map((m) => m.id);
       if (!ids.includes(pid) || !ids.includes(byId)) continue;
-      const mine = g.members.find((m) => m.id === pid)?.choice;
-      const theirs = g.members.find((m) => m.id === byId)?.choice;
-      if (mine === 'stand' && theirs === 'fold') return true;
+      const mine = g.members.find((m) => m.id === pid);
+      const theirs = g.members.find((m) => m.id === byId);
+      if (mine?.held && theirs?.sold) return true;
     }
   }
   return false;
 }
 
 export function botChoice(rng, bot, game, group) {
+  const options = group.job.options;
+  const loyal = options[0];
+  const worst = options[options.length - 1];
+  const middles = options.slice(1, -1);
   const others = group.memberIds.filter((x) => x !== bot.id);
   const strategy = bot.strategy ?? 'titfortat';
   const pledgedAtMe = others.some((id) => group.pledges[id]);
   const finalRound = game.round >= game.config.rounds;
-
   const noise = (p) => rng.chance(p);
+  const middle = () => (middles.length ? rng.pick(middles) : worst);
 
+  // What the ghost thinks the room is about to do, in one word.
+  let read;
   switch (strategy) {
-    case 'saint':
-      return noise(0.04) ? 'fold' : 'stand';
-    case 'rat':
-      return noise(0.12) ? 'stand' : 'fold';
-    case 'coin':
-      return noise(0.5) ? 'fold' : 'stand';
-    case 'grudger': {
-      const burned = others.some((id) => everBetrayed(game, bot.id, id));
-      if (burned) return 'fold';
-      return noise(0.05) ? 'fold' : 'stand';
-    }
+    case 'saint': read = noise(0.04) ? 'sell' : 'hold'; break;
+    case 'rat': read = noise(0.12) ? 'hold' : 'sell'; break;
+    case 'coin': read = noise(0.5) ? 'sell' : 'hold'; break;
+    case 'grudger':
+      read = others.some((id) => everBetrayed(game, bot.id, id)) ? 'sell' : (noise(0.05) ? 'sell' : 'hold');
+      break;
     case 'pavlov': {
       const last = game.history[game.history.length - 1];
-      if (!last) return 'stand';
-      const mine = last.groups
-        .flatMap((g) => g.members)
-        .find((m) => m.id === bot.id);
-      const earned = last.groups.reduce(
-        (acc, g) => acc + (g.payouts?.[bot.id] ?? 0), 0);
-      if (!mine) return 'stand';
-      // Win: keep doing it. Lose: do the other thing.
-      const good = earned >= 6;
-      if (good) return mine.choice;
-      return mine.choice === 'stand' ? 'fold' : 'stand';
+      const mine = last?.groups.flatMap((g) => g.members).find((m) => m.id === bot.id);
+      const earned = last?.groups.reduce((acc, g) => acc + (g.payouts?.[bot.id] ?? 0), 0) ?? 0;
+      if (!mine) { read = 'hold'; break; }
+      read = earned >= 6 ? (mine.held ? 'hold' : 'sell') : (mine.held ? 'sell' : 'hold');
+      break;
     }
-    case 'titfortat':
     default: {
-      const theirLast = others
-        .map((id) => lastChoiceAgainst(game, id, bot.id))
-        .filter(Boolean);
-      if (theirLast.includes('fold')) return 'fold';
-      if (finalRound && noise(0.35)) return 'fold';     // even saints get nervous at the end
-      if (pledgedAtMe && noise(0.9)) return 'stand';
-      return noise(0.1) ? 'fold' : 'stand';
+      const theirLast = others.map((id) => lastChoiceAgainst(game, id, bot.id)).filter(Boolean);
+      if (theirLast.includes('sell')) read = 'sell';
+      else if (finalRound && noise(0.35)) read = 'sell';
+      else if (pledgedAtMe && noise(0.9)) read = 'hold';
+      else read = noise(0.1) ? 'sell' : 'hold';
     }
   }
+
+  // A ghost that expects to be sold out reaches for whatever this job offers in
+  // the middle, if it offers anything at all.
+  if (read === 'sell') return (middles.length && noise(0.45) ? middle() : worst).id;
+  if (middles.length && noise(0.18)) return middle().id;
+  return loyal.id;
 }
 
 export function botWhisper(rng, bot, game, group) {
@@ -134,7 +134,7 @@ export function botAccusation(rng, bot, game) {
     for (const g of round.groups) {
       for (const m of g.members) {
         if (m.id === bot.id) continue;
-        if (m.choice === 'fold') folds.set(m.id, (folds.get(m.id) ?? 0) + 1);
+        if (m.sold) folds.set(m.id, (folds.get(m.id) ?? 0) + 1);
       }
     }
   }

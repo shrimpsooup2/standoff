@@ -1,13 +1,14 @@
 import { makeRng, roomCode } from './rng.js';
 import { makeDeck, makeJob, narrate } from './scenarios.js';
-import { makeMatrix, stakesForRound, pairPayoff, groupPayoff, groupParams } from './payoffs.js';
+import { stakesForRound, groupParams } from './payoffs.js';
+import { resolve as resolveOptions, previewOption, isCooperative, isBetrayal, traitsOf, ARCHETYPE_NOTES } from './options.js';
 import { pickTwist, TWIST_BY_ID } from './twists.js';
 import { dealRoles, ROLE_BY_ID } from './roles.js';
 import { fill } from './lexicon.js';
 import { botWhisper, botChoice, botAccusation, botCard, botVote } from './bots.js';
 import { CARD_BY_ID, dealHand, handSize, drawCard } from './cards.js';
 import { pickEvent, EVENT_BY_ID } from './events.js';
-import { tableProfile, actForRound, ACTS, assignCrews, CREWS, heatBand, heatDelta } from './director.js';
+import { tableProfile, actForRound, ACTS, assignCrews, CREWS, heatBand, heatDelta, actionChance, DESK_TWISTS } from './director.js';
 
 export const PHASES = ['lobby', 'act', 'deal', 'talk', 'squeeze', 'reckoning', 'event', 'vote', 'accusation', 'ledger'];
 
@@ -23,7 +24,7 @@ function emptyStats() {
     mutualStands: 0, mutualFolds: 0,
     pledges: 0, pledgesKept: 0, pledgesBroken: 0,
     markersEarned: 0, markersSpent: 0, silentRounds: 0,
-    cardsPlayed: 0, secretFolds: 0,
+    cardsPlayed: 0, secretFolds: 0, middles: 0,
   };
 }
 
@@ -131,7 +132,12 @@ export class Game {
   seconds(phase) { return Math.round(BASE_SECONDS[phase] * (PACE[this.config.pace] ?? 1)); }
 
   setDeadline(phase) {
-    this.deadline = this.config.timers ? Date.now() + this.seconds(phase) * 1000 : null;
+    if (!this.config.timers) { this.deadline = null; return; }
+    // on a loud job you are on a rope, not in a chair
+    const rush = this.actionRound && (phase === 'squeeze' || phase === 'talk')
+      ? (phase === 'squeeze' ? 0.55 : 0.7)
+      : 1;
+    this.deadline = Date.now() + Math.round(this.seconds(phase) * rush) * 1000;
   }
 
   bump() { this.version++; }
@@ -286,18 +292,30 @@ export class Game {
 
     const isTable = this.isTableRound(this.round) && working.length >= 3;
     const isFinal = this.round >= this.config.rounds;
-    const stakes = stakesForRound(this.round, this.config.rounds);
     const band = heatBand(this.heat);
+
+    // Is tonight one of the loud ones? Decided for the whole table at once, so
+    // the round has a single tone instead of one pair on a rooftop and another
+    // in an interview room.
+    this.actionRound = !isFinal && this.rng.chance(actionChance(this.round, this.config.rounds));
+    // An event can hand us a twist written for an interview room (a wiretap
+    // warrant, say). If it has, tonight is a desk night whatever the dice said.
+    if (this.forcedTwist && DESK_TWISTS.includes(this.forcedTwist)) this.actionRound = false;
 
     if (this.forcedTwist && TWIST_BY_ID[this.forcedTwist]) {
       this.twist = TWIST_BY_ID[this.forcedTwist];
       this.forcedTwist = null;
     } else {
       this.twist = pickTwist(this.rng, {
-        exclude: isTable ? ['wire', 'switch'] : [],
+        exclude: [
+          ...(isTable ? ['wire', 'switch'] : []),
+          ...(this.actionRound ? DESK_TWISTS : []),
+        ],
         allowTalkless: this.round > 1,
       });
     }
+
+    const stakes = stakesForRound(this.round, this.config.rounds) * (this.actionRound ? 1.25 : 1);
 
     const groupings = isTable
       ? [working]
@@ -306,9 +324,10 @@ export class Game {
     this.groups = groupings.filter((g) => g.length > 0).map((memberIds, i) => {
       const members = memberIds.map((id) => ({ id, name: this.players.get(id).name }));
       const kind = isTable ? 'table' : memberIds.length >= 3 ? 'trio' : 'pair';
-      const callback = kind === 'pair' ? this.callbackFor(memberIds) : null;
+      const callback = kind === 'pair' && !this.actionRound ? this.callbackFor(memberIds) : null;
       const job = makeJob(this.rng, {
         kind, members, deck: this.deck, final: isFinal && isTable, callback,
+        action: this.actionRound,
       });
       const group = {
         id: `g${this.round}_${i}`,
@@ -325,13 +344,11 @@ export class Game {
         leak: null,
         result: null,
       };
-      if (kind === 'pair') {
-        group.matrix = makeMatrix(this.rng, stakes);
-        // the hotter the table, the better the offer on the table
-        group.matrix.T = Math.round(group.matrix.T * band.temptation);
-      } else {
-        group.params = groupParams(this.rng, memberIds.length, stakes);
-      }
+      // The same shape for two people in two rooms and for ten round a table:
+      // a stake each, a pot that grows, and a split that ignores who paid.
+      group.stake = groupParams(this.rng, memberIds.length, stakes);
+      // the hotter the table, the more a stake is worth keeping
+      group.stake.unit = Math.round(group.stake.contribution * band.temptation);
       return group;
     });
 
@@ -484,10 +501,9 @@ export class Game {
           kind,
           memberIds: memberIds.slice(),
           talkMemberIds: old.talkMemberIds.slice(),
-          job: makeJob(this.rng, { kind, members, deck: this.deck }),
+          job: makeJob(this.rng, { kind, members, deck: this.deck, action: this.actionRound }),
           stakes: old.stakes,
-          matrix: kind === 'pair' ? makeMatrix(this.rng, old.stakes) : undefined,
-          params: kind !== 'pair' ? groupParams(this.rng, memberIds.length, old.stakes) : undefined,
+          stake: (() => { const st = groupParams(this.rng, memberIds.length, old.stakes); st.unit = st.contribution; return st; })(),
           choices: {}, publicChoices: {}, lockOrder: [],
           whispers: allWhispers, pledges: allPledges,
           cards: Object.fromEntries(Object.entries(allCards).filter(([pid]) => memberIds.includes(pid))),
@@ -513,11 +529,12 @@ export class Game {
     const g = this.groupOf(pid);
     if (!g) return { error: 'You are not on this job.' };
     if (g.choices[pid]) return { error: 'Locked in. No take-backs.' };
-    const value = choice === 'fold' ? 'fold' : 'stand';
-    g.choices[pid] = value;
+    const option = g.job.options.find((o) => o.id === choice);
+    if (!option) return { error: 'That is not one of the things you can do here.' };
+    g.choices[pid] = option.id;
     g.lockOrder.push(pid);
     if (this.twist.id === 'wire' && g.kind === 'pair' && g.lockOrder.length === 1) {
-      g.leak = { from: pid, choice: value };
+      g.leak = { from: pid, choice: option.id, label: option.label };
     }
     this.bump();
     if (this.groups.every((grp) => grp.memberIds.every((id) => grp.choices[id]))) this.resolve();
@@ -525,6 +542,16 @@ export class Game {
   }
 
   // ---------------------------------------------------------------- resolve ---
+
+  // --- helpers over the option a player picked ----------------------------
+
+  optionOf(g, pid, { shown = false } = {}) {
+    const id = (shown ? g.publicChoices[pid] : g.choices[pid]) ?? g.job.options[0].id;
+    return g.job.options.find((o) => o.id === id) ?? g.job.options[0];
+  }
+
+  heldLine(g, pid, opts) { return isCooperative(this.optionOf(g, pid, opts)); }
+  soldOut(g, pid, opts) { return isBetrayal(this.optionOf(g, pid, opts)); }
 
   resolve() {
     const twist = this.twist.id;
@@ -542,11 +569,11 @@ export class Game {
       r.total += amount;
     };
 
-    // --- silence reads as holding the line ---------------------------------
+    // --- silence takes the first move on the card, which is always the loyal one
     for (const g of this.groups) {
       for (const pid of g.memberIds) {
         if (!g.choices[pid]) {
-          g.choices[pid] = 'stand';
+          g.choices[pid] = g.job.options[0].id;
           g.wentQuiet = (g.wentQuiet ?? []).concat(pid);
           this.players.get(pid).stats.silentRounds += 1;
         }
@@ -564,7 +591,6 @@ export class Game {
       const c = g.cards[pid];
       if (!c) return null;
       if (c.targetId && shielded.has(c.targetId)) return null;
-      // cards that act on a partner die against a shielded partner
       if (['muscle', 'shakedown', 'split', 'godfather'].includes(c.cardId)) {
         const partners = g.memberIds.filter((x) => x !== pid);
         if (partners.length && partners.every((x) => shielded.has(x))) return null;
@@ -572,63 +598,52 @@ export class Game {
       return c;
     };
 
-    // --- base payoffs ------------------------------------------------------
+    // --- the moves people made, turned into money -------------------------
     for (const g of this.groups) {
-      const members = g.memberIds.map((id) => ({ id, name: this.players.get(id).name }));
-      const standers = members.filter((m) => g.choices[m.id] === 'stand');
-      for (const m of members) rec(m.id);
+      const picks = g.memberIds.map((id) => ({ id, option: this.optionOf(g, id) }));
+      const res = resolveOptions({
+        picks,
+        unit: g.stake.unit ?? g.stake.contribution,
+        multiplier: g.stake.multiplier,
+      });
+      g.pot = res.pot;
 
-      if (g.kind === 'pair' && members.length === 2) {
-        const [a, b] = members;
-        const mx = g.matrix;
-        for (const [me, them] of [[a, b], [b, a]]) {
-          const mine = g.choices[me.id];
-          const theirs = g.choices[them.id];
-          let base = pairPayoff(mx, mine, theirs);
-          if (twist === 'honour' && mine === 'stand' && theirs === 'stand') base = mx.R * 3;
-          if (twist === 'squeeze' && mine === 'fold' && theirs === 'fold') base = -mx.P;
-          const r = rec(me.id);
-          r.base = base;
-          r.total += base;
-          r.lines.push({ label: labelFor(mine, theirs), amount: base });
+      const everybodyHeld = picks.every((p) => isCooperative(p.option));
+      const nobodyHeld = picks.every((p) => isBetrayal(p.option));
+
+      for (const p of picks) {
+        const r = rec(p.id);
+        let lines = res.byPlayer[p.id].lines;
+        let total = res.byPlayer[p.id].total;
+
+        // Honour Among Thieves rewards a room that all held; The Squeeze
+        // turns a room that all sold out into a bill.
+        if (twist === 'honour' && everybodyHeld) {
+          lines = [...lines, { label: 'The family was watching, and everybody held', amount: total * 2 }];
+          total *= 3;
         }
-      } else {
-        const p = g.params;
-        const res = groupPayoff({
-          contribution: p.contribution, multiplier: p.multiplier,
-          n: members.length, standCount: standers.length,
-        });
-        g.pot = res.pot;
-        for (const m of members) {
-          const mine = g.choices[m.id];
-          let base = mine === 'stand' ? res.stand : res.fold;
-          if (twist === 'honour' && standers.length === members.length) base = Math.round(base * 2);
-          if (twist === 'squeeze' && standers.length === 0) base = -Math.abs(base);
-          const r = rec(m.id);
-          r.base = base;
-          r.total += base;
-          r.lines.push({
-            label: mine === 'stand'
-              ? `Put in — pot split ${members.length} ways`
-              : 'Skimmed — kept your share and took a cut of the pot',
-            amount: base,
-          });
+        if (twist === 'squeeze' && nobodyHeld) {
+          lines = [...lines, { label: 'Nobody held, and the DA had a quota', amount: -2 * total }];
+          total = -total;
         }
+        r.base = total;
+        r.total += total;
+        r.lines.push(...lines);
       }
     }
 
-    // --- cards that reshape a pair's take ----------------------------------
+    // --- cards that reshape a take ----------------------------------------
     for (const g of this.groups) {
       for (const pid of g.memberIds) {
         const c = cardLive(g, pid);
         if (!c) continue;
         const partners = g.memberIds.filter((x) => x !== pid);
-        const mine = g.choices[pid];
         const name = this.players.get(pid).name;
+        const iHeld = this.heldLine(g, pid);
 
         if (c.cardId === 'godfather') {
-          const allHeld = partners.every((x) => g.choices[x] === 'stand');
-          if (mine === 'stand' && allHeld) {
+          const allHeld = partners.every((x) => this.heldLine(g, x));
+          if (iHeld && allHeld) {
             addLine(pid, 'The offer was taken up — doubled', rec(pid).total);
             for (const x of partners) addLine(x, `${name} made an offer and you held — doubled`, rec(x).total);
           } else if (!allHeld) {
@@ -637,8 +652,7 @@ export class Game {
           }
         }
         if (c.cardId === 'shakedown') {
-          const allHeld = mine === 'stand' && partners.every((x) => g.choices[x] === 'stand');
-          if (allHeld) {
+          if (iHeld && partners.every((x) => this.heldLine(g, x))) {
             for (const x of partners) {
               const cut = Math.round(Math.max(0, rec(x).total) / 3);
               if (cut > 0) {
@@ -648,21 +662,11 @@ export class Game {
             }
           }
         }
-        if (c.cardId === 'muscle') {
-          for (const x of partners) {
-            if (g.choices[x] !== 'fold') continue;
-            const seized = Math.max(0, rec(x).total);
-            if (seized <= 0) continue;
-            addLine(x, `${name} said what would happen. It happened.`, -seized);
-            addLine(pid, `Taken off ${this.players.get(x).name}`, Math.round(seized / 2));
-          }
-        }
         if (c.cardId === 'insurance') {
-          const traitor = partners.find((x) => g.choices[x] === 'fold');
-          if (mine === 'stand' && traitor) {
+          const traitor = partners.find((x) => this.soldOut(g, x));
+          if (iHeld && traitor) {
             const theirs = Math.max(0, rec(traitor).total);
-            const mineNow = rec(pid).total;
-            addLine(pid, 'The policy paid out — you take what they made', theirs - mineNow);
+            addLine(pid, 'The policy paid out — you take what they made', theirs - rec(pid).total);
           }
         }
         if (c.cardId === 'split' && partners.length === 1) {
@@ -679,34 +683,12 @@ export class Game {
       }
     }
 
-    // --- lawyer, done properly (halve the loss, floor at zero) -------------
     for (const g of this.groups) {
       for (const pid of g.memberIds) {
         const c = cardLive(g, pid);
         if (!c || c.cardId !== 'lawyer') continue;
         const t = rec(pid).total;
         if (t < 0) addLine(pid, 'Counsel got it halved', Math.round(-t / 2));
-      }
-    }
-
-    // --- markers ----------------------------------------------------------
-    for (const g of this.groups) {
-      for (const pid of g.memberIds) {
-        const holder = this.players.get(pid);
-        if (!holder.markerTarget) continue;
-        const targets = holder.markerTarget === '*'
-          ? g.memberIds.filter((x) => x !== pid)
-          : [holder.markerTarget];
-        for (const tid of targets) {
-          if (!g.memberIds.includes(tid)) continue;
-          if (g.choices[tid] !== 'fold') continue;
-          const seized = Math.max(0, rec(tid).total);
-          if (seized <= 0) continue;
-          const share = holder.role === 'bruiser' ? seized : Math.round(seized / 2);
-          addLine(tid, `Marker called in by ${holder.name} — forfeited`, -seized);
-          addLine(pid, `Marker collected from ${this.players.get(tid).name}`, share);
-          holder.roundNote = `Your marker landed on ${this.players.get(tid).name}.`;
-        }
       }
     }
 
@@ -722,19 +704,24 @@ export class Game {
     for (const g of this.groups) {
       for (const pid of g.memberIds) {
         const p = this.players.get(pid);
-        const mine = g.choices[pid];
         const others = g.memberIds.filter((x) => x !== pid);
-        const someoneFolded = others.some((x) => g.choices[x] === 'fold');
-        if (p.role === 'rat' && mine === 'fold') addLine(pid, 'The envelope from the DA', 6);
-        if (p.role === 'widow' && mine === 'stand' && someoneFolded) addLine(pid, 'The policy pays out', 12);
+        const someoneSold = others.some((x) => this.soldOut(g, x));
+        if (p.role === 'rat' && this.soldOut(g, pid)) addLine(pid, 'The envelope from the DA', 6);
+        if (p.role === 'widow' && this.heldLine(g, pid) && someoneSold) addLine(pid, 'The policy pays out', 12);
         if (p.role === 'ghost') {
+          const mine = g.choices[pid];
           const matched = others.length > 0 && others.every((x) => g.choices[x] === mine);
           if (matched) addLine(pid, 'Moved as one — nobody saw you', 5);
+        }
+        // Somebody who put in more than their share is owed, and the table knows it.
+        if (traitsOf(this.optionOf(g, pid)).give > 1.2) {
+          p.markers += 1;
+          p.stats.markersEarned += 1;
+          p.roundNote = 'You carried more than your share. The table owes you one.';
         }
       }
     }
 
-    // --- the counterfeit only works if you were the only one playing -------
     for (const g of this.groups) {
       for (const pid of g.memberIds) {
         const c = cardLive(g, pid);
@@ -746,7 +733,6 @@ export class Game {
       }
     }
 
-    // --- the skim comes off the whole table --------------------------------
     let tableTotal = 0;
     for (const [, r] of payouts) tableTotal += Math.max(0, r.total);
     for (const g of this.groups) {
@@ -772,23 +758,58 @@ export class Game {
       }
     }
 
-    // --- the sit-out gets paid for staying home ----------------------------
     if (this.sittingOut && this.players.has(this.sittingOut)) {
       addLine(this.sittingOut, 'Paid to stay away from it', 14);
     }
 
+    // --- seizures, last of all, so a forfeited round is genuinely forfeited --
+    for (const g of this.groups) {
+      for (const pid of g.memberIds) {
+        const c = cardLive(g, pid);
+        if (!c || c.cardId !== 'muscle') continue;
+        const name = this.players.get(pid).name;
+        for (const x of g.memberIds) {
+          if (x === pid || !this.soldOut(g, x)) continue;
+          const seized = Math.max(0, rec(x).total);
+          if (seized <= 0) continue;
+          addLine(x, `${name} said what would happen. It happened.`, -seized);
+          addLine(pid, `Taken off ${this.players.get(x).name}`, Math.round(seized / 2));
+        }
+      }
+    }
+    for (const g of this.groups) {
+      for (const pid of g.memberIds) {
+        const holder = this.players.get(pid);
+        if (!holder.markerTarget) continue;
+        const targets = holder.markerTarget === '*'
+          ? g.memberIds.filter((x) => x !== pid)
+          : [holder.markerTarget];
+        for (const tid of targets) {
+          if (!g.memberIds.includes(tid)) continue;
+          if (!this.soldOut(g, tid)) continue;
+          const seized = Math.max(0, rec(tid).total);
+          if (seized <= 0) continue;
+          const share = holder.role === 'bruiser' ? seized : Math.round(seized / 2);
+          addLine(tid, `Marker called in by ${holder.name} — forfeited`, -seized);
+          addLine(pid, `Marker collected from ${this.players.get(tid).name}`, share);
+          holder.roundNote = `Your marker landed on ${this.players.get(tid).name}.`;
+        }
+      }
+    }
+
     // --- what the table is shown vs what actually happened ------------------
     for (const g of this.groups) {
+      const loyalId = g.job.options[0].id;
+      const worstId = g.job.options[g.job.options.length - 1].id;
       for (const pid of g.memberIds) g.publicChoices[pid] = g.choices[pid];
       for (const [pid, c] of Object.entries(g.cards)) {
-        const live = cardLive(g, pid);
-        if (!live) continue;
-        if (c.cardId === 'alibi' && g.choices[pid] === 'fold') {
-          g.publicChoices[pid] = 'stand';
+        if (!cardLive(g, pid)) continue;
+        if (c.cardId === 'alibi' && !this.heldLine(g, pid)) {
+          g.publicChoices[pid] = loyalId;
           this.players.get(pid).stats.secretFolds += 1;
         }
         if (c.cardId === 'setup' && c.targetId && g.memberIds.includes(c.targetId)) {
-          g.publicChoices[c.targetId] = 'fold';
+          g.publicChoices[c.targetId] = worstId;
         }
       }
     }
@@ -803,38 +824,45 @@ export class Game {
         p.score += r.total;
         p.roundEarnings.push(r.total);
 
-        const shown = g.publicChoices[pid];
+        const shownHeld = this.heldLine(g, pid, { shown: true });
+        const shownSold = this.soldOut(g, pid, { shown: true });
         const others = members.filter((x) => x !== pid);
-        const standers = others.filter((x) => g.publicChoices[x] === 'stand');
-        const folders = others.filter((x) => g.publicChoices[x] === 'fold');
+        const standers = others.filter((x) => this.heldLine(g, x, { shown: true }));
+        const folders = others.filter((x) => this.soldOut(g, x, { shown: true }));
         const fixed = cardLive(g, pid)?.cardId === 'fix';
 
-        if (shown === 'stand') p.stats.stands += 1; else p.stats.folds += 1;
-        if (shown === 'fold' && standers.length > 0 && !fixed) p.stats.betrayals += 1;
-        if (shown === 'stand' && folders.length > 0) {
+        if (shownHeld) p.stats.stands += 1;
+        else if (shownSold) p.stats.folds += 1;
+        else p.stats.middles += 1;
+        if (shownSold && standers.length > 0 && !fixed) p.stats.betrayals += 1;
+        if (shownHeld && folders.length > 0) {
           p.stats.betrayed += 1;
           p.markers += 1;
           p.stats.markersEarned += 1;
         }
         if (g.kind === 'pair') {
-          if (shown === 'stand' && standers.length === 1) p.stats.mutualStands += 1;
-          if (shown === 'fold' && folders.length === 1) p.stats.mutualFolds += 1;
+          if (shownHeld && standers.length === 1) p.stats.mutualStands += 1;
+          if (shownSold && folders.length === 1) p.stats.mutualFolds += 1;
         }
 
         const pledged = !!g.pledges[pid];
         if (pledged) {
           p.stats.pledges += 1;
-          if (shown === 'stand') p.stats.pledgesKept += 1;
+          if (shownHeld) p.stats.pledgesKept += 1;
           else p.stats.pledgesBroken += 1;
         }
 
         g.result.perPlayer[pid] = {
-          choice: shown,
+          choice: g.publicChoices[pid],
+          option: this.optionOf(g, pid, { shown: true }),
           trueChoice: g.choices[pid],
+          trueOption: this.optionOf(g, pid),
+          held: shownHeld,
+          sold: shownSold,
           total: r.total,
           lines: r.lines,
           pledged,
-          brokePledge: pledged && shown === 'fold',
+          brokePledge: pledged && !shownHeld,
           card: g.cards[pid]?.cardId ?? null,
           cardCancelled: !!g.cards[pid] && !cardLive(g, pid),
         };
@@ -848,16 +876,21 @@ export class Game {
             a, b, rounds: 0, mutualStand: 0, mutualFold: 0, betrayals: {}, whispers: 0, lastIncident: null,
           };
           bond.rounds += 1;
-          const ca = g.publicChoices[a];
-          const cb = g.publicChoices[b];
-          if (ca === 'stand' && cb === 'stand') bond.mutualStand += 1;
-          else if (ca === 'fold' && cb === 'fold') {
+          const aHeld = this.heldLine(g, a, { shown: true });
+          const bHeld = this.heldLine(g, b, { shown: true });
+          const aSold = this.soldOut(g, a, { shown: true });
+          const bSold = this.soldOut(g, b, { shown: true });
+          if (aHeld && bHeld) bond.mutualStand += 1;
+          else if (aSold && bSold) {
             bond.mutualFold += 1;
             bond.lastIncident = { job: g.job.title, round: this.round };
-          } else {
-            const traitor = ca === 'fold' ? a : b;
+          } else if ((aSold && bHeld) || (bSold && aHeld)) {
+            const traitor = aSold ? a : b;
             bond.betrayals[traitor] = (bond.betrayals[traitor] ?? 0) + 1;
             bond.lastIncident = { job: g.job.title, round: this.round, traitor };
+          } else {
+            bond.murky = (bond.murky ?? 0) + 1;
+            bond.lastIncident = { job: g.job.title, round: this.round };
           }
           if (g.whispers[a]) bond.whispers += 1;
           if (g.whispers[b]) bond.whispers += 1;
@@ -865,16 +898,21 @@ export class Game {
         }
       }
 
-      g.narration = narrate(g.job, members.map((id) => ({ id, name: this.players.get(id).name })), g.publicChoices);
-      g.trueNarration = narrate(g.job, members.map((id) => ({ id, name: this.players.get(id).name })), g.choices);
+      const asMembers = members.map((id) => ({ id, name: this.players.get(id).name }));
+      g.narration = narrate(g.job, asMembers, g.publicChoices);
+      g.trueNarration = narrate(g.job, asMembers, g.choices);
 
       roundLog.groups.push({
         id: g.id, kind: g.kind, title: g.job.title, caseNo: g.job.caseNo,
+        tone: g.job.tone ?? 'standard',
         callback: g.job.callback ?? null,
         members: members.map((id) => ({
           id, name: this.players.get(id).name,
           choice: g.publicChoices[id],
           trueChoice: g.choices[id],
+          move: this.optionOf(g, id).label,
+          held: this.heldLine(g, id),
+          sold: this.soldOut(g, id),
           card: g.cards[id]?.cardId ?? null,
         })),
         narration: g.trueNarration,
@@ -895,7 +933,10 @@ export class Game {
     // --- heat --------------------------------------------------------------
     let folds = 0; let stands = 0;
     for (const g of this.groups) {
-      for (const pid of g.memberIds) (g.choices[pid] === 'fold' ? folds++ : stands++);
+      for (const pid of g.memberIds) {
+        if (this.soldOut(g, pid)) folds++;
+        else if (this.heldLine(g, pid)) stands++;
+      }
     }
     this.heat = Math.max(0, Math.min(100, this.heat + heatDelta({ folds, stands, n: Math.max(2, this.players.size) })));
     roundLog.heat = this.heat;
@@ -1140,6 +1181,7 @@ export class Game {
       crews: this.crews ? CREWS : null,
       sittingOut: this.sittingOut ? { id: this.sittingOut, name: nameOf(this.sittingOut) } : null,
       version: this.version,
+      actionRound: !!this.actionRound,
       players: this.livePlayers.map((p) => ({
         id: p.id, name: p.name, bot: p.bot,
         strategy: p.bot ? p.strategy : null,
@@ -1182,6 +1224,7 @@ export class Game {
       const lookout = g.cards[pid]?.cardId === 'lookout';
       base.job = {
         kind: g.kind,
+        tone: g.job.tone ?? 'standard',
         title: g.job.title,
         caseNo: g.job.caseNo,
         setup: g.job.setup,
@@ -1194,8 +1237,19 @@ export class Game {
         fold: { label: g.job.fold.label, blurb: personalise(g.job.fold.blurb) },
         partners: g.memberIds.filter((x) => x !== pid).map((id) => ({ id, name: nameOf(id) })),
         talkPartners: (talkGroup ?? g).talkMemberIds.filter((x) => x !== pid).map((id) => ({ id, name: nameOf(id) })),
-        matrix: g.matrix ?? null,
-        params: g.params ?? null,
+        stake: g.stake ? { unit: g.stake.unit ?? g.stake.contribution, multiplier: g.stake.multiplier, n: g.memberIds.length } : null,
+        options: g.job.options.map((o) => ({
+          id: o.id,
+          label: o.label,
+          blurb: personalise(o.blurb),
+          archetype: o.archetype,
+          note: ARCHETYPE_NOTES[o.archetype] ?? '',
+          ...previewOption(o, {
+            unit: g.stake.unit ?? g.stake.contribution,
+            multiplier: g.stake.multiplier,
+            n: g.memberIds.length,
+          }),
+        })),
         yourChoice: g.choices[pid] ?? null,
         lockedCount: g.memberIds.filter((id) => g.choices[id]).length,
         groupSize: g.memberIds.length,
@@ -1208,7 +1262,9 @@ export class Game {
           ? this.groups.flatMap((grp) => grp.talkMemberIds.map((id) => ({ name: nameOf(id), pledged: !!grp.pledges[id] })))
           : (talkGroup ?? g).talkMemberIds.filter((x) => x !== pid)
               .map((id) => ({ name: nameOf(id), pledged: !!(talkGroup ?? g).pledges[id] })),
-        leak: g.leak && g.leak.from !== pid ? { from: nameOf(g.leak.from), choice: g.leak.choice } : null,
+        leak: g.leak && g.leak.from !== pid
+          ? { from: nameOf(g.leak.from), choice: g.leak.choice, label: g.leak.label }
+          : null,
         // face-up cards are announced the moment they hit the table
         declared: Object.entries(g.cards)
           .filter(([owner, c]) => owner !== pid && c.face === 'up')
@@ -1219,7 +1275,7 @@ export class Game {
         // somebody with a Lookout sees the room
         lookout: lookout
           ? g.memberIds.filter((x) => x !== pid && g.choices[x])
-              .map((x) => ({ name: nameOf(x), choice: g.choices[x] }))
+              .map((x) => ({ name: nameOf(x), label: this.optionOf(g, x).label }))
           : null,
         cardPlayedByYou: g.cards[pid] ? CARD_BY_ID[g.cards[pid].cardId] : null,
       };
@@ -1228,7 +1284,7 @@ export class Game {
     if (this.phase === 'reckoning') {
       const blind = this.twist?.id === 'blind';
       base.reckoning = this.groups.map((grp) => ({
-        id: grp.id, kind: grp.kind, title: grp.job.title,
+        id: grp.id, kind: grp.kind, title: grp.job.title, tone: grp.job.tone ?? 'standard',
         yours: grp.memberIds.includes(pid),
         callback: grp.job.callback ?? null,
         narration: blind
@@ -1239,6 +1295,9 @@ export class Game {
         members: grp.memberIds.map((id) => ({
           id, name: nameOf(id),
           choice: blind && id !== pid ? null : grp.publicChoices[id],
+          move: blind && id !== pid ? null : grp.result?.perPlayer[id]?.option?.label ?? null,
+          held: blind && id !== pid ? null : !!grp.result?.perPlayer[id]?.held,
+          sold: blind && id !== pid ? null : !!grp.result?.perPlayer[id]?.sold,
           total: blind && id !== pid ? null : grp.result?.perPlayer[id]?.total ?? 0,
           pledged: blind && id !== pid ? false : !!grp.result?.perPlayer[id]?.pledged,
           brokePledge: blind && id !== pid ? false : !!grp.result?.perPlayer[id]?.brokePledge,
@@ -1281,6 +1340,7 @@ export class Game {
       return {
         a: b.a, b: b.b, aName: nameOf(b.a), bName: nameOf(b.b),
         rounds: b.rounds, mutualStand: b.mutualStand, mutualFold: b.mutualFold,
+        murky: b.murky ?? 0,
         betrayA, betrayB,
         trust: Number((b.rounds > 0 ? b.mutualStand / b.rounds : 0).toFixed(3)),
       };

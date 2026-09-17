@@ -140,7 +140,7 @@ test('a player’s score is exactly the sum of their payout lines', () => {
 
 test('being left out there earns a marker', () => {
   const g = openWith(duo('marker'), 'clean');
-  g.choose('a', 'stand');
+  g.choose('a', 'hold');
   g.choose('b', 'fold');
   assert.equal(g.phase, 'reckoning');
   assert.equal(g.players.get('a').markers, 1, 'the one who held should hold a marker');
@@ -158,7 +158,7 @@ test('a called-in marker takes the traitor’s whole take', () => {
   to(g, 'talk');
   g.callMarker('a');
   to(g, 'squeeze');
-  g.choose('a', 'stand');
+  g.choose('a', 'hold');
   g.choose('b', 'fold');
   const per = g.groups[0].result.perPlayer;
   assert.ok(per.b.total <= 0, 'the traitor forfeits the round');
@@ -167,28 +167,27 @@ test('a called-in marker takes the traitor’s whole take', () => {
 
 // ----------------------------------------------------------------- twists ---
 
-test('honour among thieves makes holding together the best square on the board', () => {
+test('honour among thieves makes holding together the best thing on the board', () => {
+  const plain = duo('honour-plain');
+  plain.start(); to(plain, 'deal'); plain.twist = TWIST_BY_ID.clean; to(plain, 'squeeze');
+  plain.choose('a', 'hold'); plain.choose('b', 'hold');
+  const normal = plain.groups[0].result.perPlayer.a.total;
+
   const g = duo('honour');
-  g.start();
-  to(g, 'deal');
-  g.twist = TWIST_BY_ID.honour;
-  const matrix = g.groups[0].matrix;
-  to(g, 'squeeze');
-  g.choose('a', 'stand'); g.choose('b', 'stand');
+  g.start(); to(g, 'deal'); g.twist = TWIST_BY_ID.honour; to(g, 'squeeze');
+  g.choose('a', 'hold'); g.choose('b', 'hold');
   const per = g.groups[0].result.perPlayer;
-  assert.equal(per.a.lines[0].amount, matrix.R * 3);
-  assert.ok(per.a.lines[0].amount > matrix.T, 'tripled loyalty should beat the temptation');
+  assert.ok(per.a.lines.some((l) => /everybody held/i.test(l.label)), 'the family noticed');
+  assert.ok(per.a.total > normal * 2, `tripled loyalty should dwarf a normal clean round (${per.a.total} vs ${normal})`);
 });
 
-test('the squeeze makes mutual folding cost real money', () => {
+test('the squeeze turns a room that all sold out into a bill', () => {
   const g = duo('squeezetwist');
-  g.start();
-  to(g, 'deal');
-  g.twist = TWIST_BY_ID.squeeze;
-  to(g, 'squeeze');
+  g.start(); to(g, 'deal'); g.twist = TWIST_BY_ID.squeeze; to(g, 'squeeze');
   g.choose('a', 'fold'); g.choose('b', 'fold');
-  const line = g.groups[0].result.perPlayer.a.lines[0];
-  assert.equal(line.amount, -g.groups[0].matrix.P, 'both folding should cost, not pay');
+  const per = g.groups[0].result.perPlayer;
+  assert.ok(per.a.total < 0, `both selling out should cost, not pay (got ${per.a.total})`);
+  assert.ok(per.a.lines.some((l) => /quota/i.test(l.label)));
 });
 
 test('blind alley seals the round — yours and everybody else’s', () => {
@@ -197,7 +196,7 @@ test('blind alley seals the round — yours and everybody else’s', () => {
   to(g, 'deal');
   g.twist = TWIST_BY_ID.blind;
   to(g, 'squeeze');
-  for (const id of ['p0', 'p1', 'p2', 'p3']) if (!g.groupOf(id).choices[id]) g.choose(id, 'stand');
+  for (const id of ['p0', 'p1', 'p2', 'p3']) if (!g.groupOf(id).choices[id]) g.choose(id, 'hold');
   const v = g.view('p0');
   const mine = v.reckoning.find((r) => r.yours);
   assert.ok(mine.yourLines.length > 0, 'you are still told what you earned');
@@ -216,7 +215,7 @@ test('going quiet counts as holding the line', () => {
   const g = openWith(duo('quiet'), 'clean');
   g.choose('a', 'fold');
   g.advancePhase();
-  assert.equal(g.groups[0].choices.b, 'stand');
+  assert.equal(g.groups[0].choices.b, 'hold');
   assert.equal(g.players.get('b').stats.silentRounds, 1);
 });
 
@@ -228,7 +227,7 @@ test('a broken pledge is recorded against the person who broke it', () => {
   to(g, 'talk');
   g.pledge('a', true); g.pledge('b', true);
   to(g, 'squeeze');
-  g.choose('a', 'stand'); g.choose('b', 'fold');
+  g.choose('a', 'hold'); g.choose('b', 'fold');
   assert.equal(g.players.get('b').stats.pledgesBroken, 1);
   assert.equal(g.players.get('a').stats.pledgesKept, 1);
 });
@@ -273,10 +272,10 @@ test('The Alibi hides a fold from the table but not from the ledger', () => {
   g.players.get('b').hand = ['alibi'];
   g.playCard('b', 'alibi');
   to(g, 'squeeze');
-  g.choose('a', 'stand'); g.choose('b', 'fold');
+  g.choose('a', 'hold'); g.choose('b', 'fold');
 
   const shown = g.view('a').reckoning[0].members.find((m) => m.id === 'b');
-  assert.equal(shown.choice, 'stand', 'the table is shown a man who held');
+  assert.equal(shown.choice, 'hold', 'the table is shown a man who held');
   assert.equal(g.players.get('b').stats.betrayals, 0, 'and the record agrees');
   assert.equal(g.players.get('a').markers, 0, 'so no marker is earned against him');
   assert.equal(g.players.get('b').stats.secretFolds, 1);
@@ -285,7 +284,7 @@ test('The Alibi hides a fold from the table but not from the ledger', () => {
   const secrets = g.buildLedger().secrets;
   assert.equal(secrets.length, 1, 'the ledger knows');
   assert.equal(secrets[0].name, 'Mo');
-  assert.equal(secrets[0].shown, 'stand');
+  assert.equal(secrets[0].shown, 'hold');
   assert.equal(secrets[0].truth, 'fold');
 });
 
@@ -301,7 +300,7 @@ test('The Muscle takes a traitor’s take, and The Priest stops it', () => {
     g.playCard('a', 'muscle');
     if (bHoldsPriest) g.playCard('b', 'priest');
     to(g, 'squeeze');
-    g.choose('a', 'stand'); g.choose('b', 'fold');
+    g.choose('a', 'hold'); g.choose('b', 'fold');
     return g.groups[0].result.perPlayer;
   };
   const hit = run(false);
@@ -319,10 +318,12 @@ test('Insurance turns being betrayed into taking their take', () => {
   g.players.get('a').hand = ['insurance'];
   g.playCard('a', 'insurance');
   to(g, 'squeeze');
-  g.choose('a', 'stand'); g.choose('b', 'fold');
+  g.choose('a', 'hold'); g.choose('b', 'fold');
   const per = g.groups[0].result.perPlayer;
-  assert.equal(per.a.total, per.b.total, 'you take what the traitor made');
-  assert.ok(per.a.total > g.groups[0].matrix.S, 'which beats being the sucker');
+  const payout = per.a.lines.find((l) => /policy paid out/.test(l.label));
+  assert.ok(payout, 'the policy should pay out when somebody sells you');
+  assert.ok(payout.amount > 0, 'and it should never pay less than nothing');
+  assert.equal(per.a.total, per.b.total, 'you end up with exactly what the traitor made');
 });
 
 test('The Counterfeit only works if nobody else played a card', () => {
@@ -331,7 +332,7 @@ test('The Counterfeit only works if nobody else played a card', () => {
   alone.players.get('a').hand = ['counterfeit'];
   alone.playCard('a', 'counterfeit');
   to(alone, 'squeeze');
-  alone.choose('a', 'stand'); alone.choose('b', 'stand');
+  alone.choose('a', 'hold'); alone.choose('b', 'hold');
   assert.ok(alone.groups[0].result.perPlayer.a.lines.some((l) => /doubled/.test(l.label)));
 
   const caught = duo('cf-caught');
@@ -341,7 +342,7 @@ test('The Counterfeit only works if nobody else played a card', () => {
   caught.playCard('a', 'counterfeit');
   caught.playCard('b', 'skim');
   to(caught, 'squeeze');
-  caught.choose('a', 'stand'); caught.choose('b', 'stand');
+  caught.choose('a', 'hold'); caught.choose('b', 'hold');
   const per = caught.groups[0].result.perPlayer;
   assert.equal(per.a.total, 0, 'the paper did not pass');
 });
@@ -355,7 +356,9 @@ test('The Lookout shows you the room before you commit', () => {
   to(g, 'squeeze');
   g.choose('b', 'fold');
   const v = g.view('a');
-  assert.deepEqual(v.job.lookout, [{ name: 'Mo', choice: 'fold' }]);
+  assert.equal(v.job.lookout.length, 1);
+  assert.equal(v.job.lookout[0].name, 'Mo');
+  assert.equal(v.job.lookout[0].label, g.groups[0].job.options.at(-1).label);
   assert.equal(g.view('b').job.lookout, null, 'Mo sees nothing');
 });
 
@@ -365,7 +368,7 @@ test('The Loan Shark pays now and collects at the ledger', () => {
   g.players.get('a').hand = ['loanshark'];
   g.playCard('a', 'loanshark');
   to(g, 'squeeze');
-  g.choose('a', 'stand'); g.choose('b', 'stand');
+  g.choose('a', 'hold'); g.choose('b', 'hold');
   assert.ok(g.groups[0].result.perPlayer.a.lines.some((l) => l.amount === 25));
   const before = g.players.get('a').score;
   while (g.phase !== 'ledger') g.advancePhase();
@@ -384,7 +387,7 @@ test('heat rises when the table talks and falls when it holds', () => {
 
   const holders = humanTable(['A', 'B', 'C', 'D'], 'cool');
   holders.start(); to(holders, 'squeeze');
-  for (const id of holders.order) if (!holders.groupOf(id).choices[id]) holders.choose(id, 'stand');
+  for (const id of holders.order) if (!holders.groupOf(id).choices[id]) holders.choose(id, 'hold');
   assert.ok(hot > holders.heat, 'folding is louder than holding');
   assert.ok(hot > 0);
   assert.equal(holders.heat, 0, 'a quiet table stays quiet');
@@ -409,7 +412,7 @@ test('a pair with history gets a job built out of it', () => {
   const g = duo('callback');
   g.start(); to(g, 'deal'); g.twist = TWIST_BY_ID.clean; to(g, 'squeeze');
   const firstJob = g.groups[0].job.title;
-  g.choose('a', 'stand'); g.choose('b', 'fold');
+  g.choose('a', 'hold'); g.choose('b', 'fold');
   g.profile = { ...g.profile, callbackChance: 1 };
   while (g.phase !== 'deal') g.advancePhase();
 
@@ -491,7 +494,7 @@ test('two hundred nights end cleanly, with the books balanced', () => {
     assert.ok(ledger.bonds.length > 0);
     assert.ok(ledger.heat >= 0 && ledger.heat <= 100);
     for (const b of ledger.bonds) {
-      assert.equal(b.mutualStand + b.mutualFold + b.betrayA + b.betrayB, b.rounds,
+      assert.equal(b.mutualStand + b.mutualFold + b.betrayA + b.betrayB + b.murky, b.rounds,
         'every round between two people is accounted for exactly once');
     }
     for (const r of ledger.history) {
@@ -502,4 +505,95 @@ test('two hundred nights end cleanly, with the books balanced', () => {
       }
     }
   }
+});
+
+test('a forfeited round is forfeited after every bonus, not before', () => {
+  // Regression: role money used to land after a seizure and quietly un-forfeit it.
+  for (const weapon of ['marker', 'muscle']) {
+    const g = duo(`forfeit-${weapon}`);
+    g.start();
+    to(g, 'deal');
+    g.twist = TWIST_BY_ID.clean;
+    // Mo is the Rat, so folding would normally pay him an envelope on top
+    g.players.get('b').role = 'rat';
+    g.players.get('a').role = 'bruiser';
+    to(g, 'talk');
+    if (weapon === 'marker') {
+      g.players.get('a').markers = 1;
+      g.callMarker('a');
+    } else {
+      g.players.get('a').hand = ['muscle'];
+      g.playCard('a', 'muscle');
+    }
+    to(g, 'squeeze');
+    g.choose('a', 'hold');
+    g.choose('b', 'fold');
+    const per = g.groups[0].result.perPlayer;
+    assert.equal(per.b.total, 0, `${weapon}: the traitor keeps nothing at all`);
+    assert.ok(per.b.lines.some((l) => /envelope from the DA/.test(l.label)),
+      `${weapon}: the envelope was still paid — and then taken`);
+    assert.ok(per.a.total > 0, `${weapon}: the holder collects`);
+  }
+});
+
+test('the loud ones are rarer than the quiet ones, and get commoner late', () => {
+  let action = 0;
+  let total = 0;
+  const early = { action: 0, total: 0 };
+  const late = { action: 0, total: 0 };
+
+  for (let i = 0; i < 120; i++) {
+    const g = tableOf(['A', 'B', 'C', 'D'], `tone-${i}`, { rounds: 6 });
+    g.start();
+    while (g.phase !== 'ledger') {
+      if (g.phase === 'deal') {
+        total += 1;
+        // the finale is always The Last Standoff, so it is never loud by design;
+        // leave it out of the ramp or it drags the late bucket to zero
+        const bucket = g.round <= 2 ? early : g.round < g.config.rounds ? late : null;
+        if (bucket) bucket.total += 1;
+        if (g.actionRound) { action += 1; if (bucket) bucket.action += 1; }
+        // every job dealt this round must match the round's tone
+        for (const grp of g.groups) {
+          assert.equal(grp.job.tone === 'action', !!g.actionRound,
+            'a round should not mix a rooftop with an interview room');
+        }
+      }
+      g.advancePhase();
+    }
+  }
+
+  const rate = action / total;
+  assert.ok(rate > 0.05 && rate < 0.35, `action rate was ${(rate * 100).toFixed(1)}%`);
+  const earlyRate = early.action / early.total;
+  const lateRate = late.action / late.total;
+  assert.ok(lateRate > earlyRate,
+    `the night should get louder, not quieter (early ${(earlyRate * 100).toFixed(1)}%, late ${(lateRate * 100).toFixed(1)}%)`);
+});
+
+test('a loud round skips the twists written for an interview room', () => {
+  const deskTwists = ['notalk', 'openbook', 'wire', 'blind'];
+  for (let i = 0; i < 200; i++) {
+    const g = tableOf(['A', 'B', 'C', 'D'], `twisttone-${i}`, { rounds: 6 });
+    g.start();
+    while (g.phase !== 'ledger') {
+      if (g.phase === 'deal' && g.actionRound) {
+        assert.ok(!deskTwists.includes(g.twist.id),
+          `"${g.twist.name}" does not belong on a rooftop`);
+      }
+      g.advancePhase();
+    }
+  }
+});
+
+test('a loud round runs on a shorter clock', () => {
+  const g = tableOf(['A', 'B', 'C', 'D'], 'clock', { rounds: 6, timers: true });
+  g.start();
+  g.actionRound = false;
+  g.setDeadline('squeeze');
+  const calm = g.deadline - Date.now();
+  g.actionRound = true;
+  g.setDeadline('squeeze');
+  const loud = g.deadline - Date.now();
+  assert.ok(loud < calm, 'the squeeze should be tighter when you are on a rope');
 });

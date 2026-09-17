@@ -4,8 +4,23 @@ import { spawn } from 'node:child_process';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+import net from 'node:net';
+
 const root = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
-const PORT = 8800 + Math.floor(Math.random() * 400);
+
+/** Ask the OS for a free port instead of guessing and colliding. */
+async function freePort() {
+  return new Promise((resolve, reject) => {
+    const probe = net.createServer();
+    probe.once('error', reject);
+    probe.listen(0, '127.0.0.1', () => {
+      const { port } = probe.address();
+      probe.close(() => resolve(port));
+    });
+  });
+}
+
+const PORT = await freePort();
 const URL_BASE = `http://127.0.0.1:${PORT}`;
 
 /** A scripted player: opens a socket, remembers the last state it was sent. */
@@ -144,9 +159,14 @@ test('three friends play a whole night through real sockets', async () => {
     }
 
     await Promise.all(all.map((x) => x.phase('squeeze')));
-    host.send({ t: 'choose', choice: 'stand' });
-    b.send({ t: 'choose', choice: round === 2 ? 'fold' : 'stand' });
-    c.send({ t: 'choose', choice: 'fold' });
+    // every job offers its own moves; the first is always the loyal one and the
+    // last is always the worst one, whatever this particular room calls them
+    const loyal = (x) => x.state.job.options[0].id;
+    const worst = (x) => x.state.job.options[x.state.job.options.length - 1].id;
+    assert.ok(host.state.job.options.length >= 2, 'a job should offer something to choose between');
+    host.send({ t: 'choose', choice: loyal(host) });
+    b.send({ t: 'choose', choice: round === 2 ? worst(b) : loyal(b) });
+    c.send({ t: 'choose', choice: worst(c) });
 
     await Promise.all(all.map((x) => x.phase('reckoning')));
     for (const x of all) {

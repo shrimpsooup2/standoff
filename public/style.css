@@ -535,3 +535,56 @@ button {
 .profile-box .pb { font-size: 14.5px; color: var(--bone-dim); margin: 6px 0 8px; font-style: italic; }
 .profile-box ul { margin: 0; padding-left: 18px; font-size: 14px; color: var(--bone-dim); }
 .profile-box li { margin-bottom: 3px; }
+
+/* --- the loud ones -------------------------------------------------------- */
+
+.dossier.action {
+  border-left-color: var(--blood-bright);
+  background:
+    linear-gradient(180deg, rgba(181, 35, 43, 0.1), rgba(233, 227, 214, 0.015) 55%),
+    var(--ink-2);
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.6), inset 0 0 90px rgba(181, 35, 43, 0.06);
+}
+.dossier.action h2 { color: #f2e9dc; }
+.dossier.action p { font-size: 17.5px; }
+
+.action-flag {
+  display: inline-flex; align-items: center; gap: 8px;
+  font-family: var(--mono); font-size: 10px; letter-spacing: 0.3em;
+  color: var(--blood-bright); border: 1px solid currentColor;
+  padding: 4px 10px; margin-bottom: 12px;
+}
+.action-flag::before {
+  content: ''; width: 6px; height: 6px; border-radius: 50%;
+  background: currentColor; animation: throb 1s ease-in-out infinite;
+}
+@keyframes throb { 50% { opacity: 0.15; transform: scale(0.7); } }
+
+.action-strip {
+  display: flex; align-items: center; gap: 12px;
+  border-top: 1px solid rgba(224, 53, 61, 0.35);
+  border-bottom: 1px solid rgba(224, 53, 61, 0.35);
+  background: rgba(181, 35, 43, 0.08);
+  padding: 10px 14px; margin-bottom: 16px;
+}
+.action-strip .as-t {
+  font-family: var(--mono); font-size: 11px; letter-spacing: 0.26em;
+  color: var(--blood-bright); white-space: nowrap;
+}
+.action-strip .as-b { font-size: 14.5px; color: var(--bone-dim); font-style: italic; }
+
+.choice.action-stand { border-left-color: var(--green); }
+.choice.action-fold { border-left-color: var(--blood-bright); }
+body.loud .timer-fill { background: var(--blood-bright); }
+.reveal-row.loud { border-left-width: 3px; }
+
+/* --- more than two ways out ---------------------------------------------- */
+
+.choices.n3 { grid-template-columns: repeat(3, 1fr); }
+.choices.n4 { grid-template-columns: repeat(2, 1fr); }
+@media (max-width: 900px) { .choices.n3 { grid-template-columns: 1fr 1fr; } }
+.choice.middle { border-left: 3px solid var(--gold); }
+.choice.middle:hover:not(:disabled) { background: rgba(201, 162, 39, 0.07); }
+.reveal-row.middle { border-left: 3px solid var(--gold); }
+.reveal-verdict:not(.stand):not(.fold) { color: var(--gold); }
+.matrix td[style*="text-align:left"] { font-size: 10.5px; letter-spacing: 0.06em; }

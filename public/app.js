@@ -165,6 +165,7 @@ function tickTimer() {
 
 function render() {
   if (!state) { app.innerHTML = viewDoor(); chrome.classList.add('hidden'); rail.classList.add('hidden'); return; }
+  document.body.classList.toggle('loud', !!state.actionRound);
   renderChrome();
   renderRail();
 
@@ -483,8 +484,10 @@ function jobCard(job, { showPressure = true } = {}) {
     clean: 'YOU TWO HAVE NEVER SLIPPED',
     repeat: 'THIS KEEPS HAPPENING',
   }[job.callback?.kind];
+  const loud = job.tone === 'action';
   return `
-  <article class="dossier" data-case="NO. ${esc(job.caseNo)}">
+  <article class="dossier ${loud ? 'action' : ''}" data-case="NO. ${esc(job.caseNo)}">
+    ${loud ? '<div class="action-flag">IN PROGRESS</div>' : ''}
     ${cbLabel ? `<div class="callback-flag">${cbLabel}</div>` : ''}
     <p class="stamp">${esc(who)}</p>
     <h2>${esc(job.title)}</h2>
@@ -500,6 +503,7 @@ function viewDeal() {
   if (!job) return sittingOutNote();
   return `
   <section>
+    ${actionStrip()}
     ${heatNote()}
     ${twistBanner()}
     ${jobCard(job)}
@@ -528,6 +532,14 @@ function sittingOutNote() {
   </div>`;
 }
 
+function actionStrip() {
+  if (!state.actionRound) return '';
+  return `<div class="action-strip">
+    <div class="as-t">NO TIME</div>
+    <div class="as-b">This one is happening right now. Shorter clock, bigger money, and the choice is something you do with your hands.</div>
+  </div>`;
+}
+
 function heatNote() {
   if (!state.heat || state.heat.key === 'quiet') return '';
   return `<p class="stamp" style="margin-bottom:10px">
@@ -536,33 +548,25 @@ function heatNote() {
 }
 
 function payoffPanel(job) {
-  if (job.matrix) {
-    const m = job.matrix;
-    return `
-    <p class="stamp">what this one pays</p>
+  if (!job.options?.length) return '';
+  const n = job.stake?.n ?? 2;
+  const room = n > 2 ? 'the room holds' : 'they hold';
+  const bust = n > 2 ? 'it doesn\u2019t' : 'they don\u2019t';
+  return `
+    <p class="stamp">what each way out is worth</p>
     <table class="matrix">
-      <tr><th></th><th>they hold</th><th>they fold</th></tr>
-      <tr><th>you hold</th><td class="good"><b>${money(m.R)}</b></td><td class="bad"><b>${money(m.S)}</b></td></tr>
-      <tr><th>you fold</th><td><b>${money(m.T)}</b></td><td><b>${money(m.P)}</b></td></tr>
+      <tr><th style="text-align:left">the move</th><th>if ${room}</th><th>if ${bust}</th></tr>
+      ${job.options.map((o) => `
+        <tr>
+          <td style="text-align:left;color:var(--bone)">${esc(o.label)}</td>
+          <td class="${o.ifTheyHold >= o.ifTheyDont ? 'good' : ''}"><b>${money(o.ifTheyHold)}</b></td>
+          <td class="${o.ifTheyDont > o.ifTheyHold ? 'good' : 'bad'}"><b>${money(o.ifTheyDont)}</b></td>
+        </tr>`).join('')}
     </table>
     <p style="color:var(--bone-faint);font-size:13px;margin-top:8px">
-      Folding on somebody who holds is the best night you can have. Both of you folding is the worst night everybody can have at once.
+      Nothing here is safe and nothing here is the decent thing. What is worth doing depends
+      entirely on what you think everybody else is about to do.
     </p>`;
-  }
-  if (job.params) {
-    const p = job.params;
-    return `
-    <p class="stamp">what this one pays</p>
-    <p style="font-family:var(--mono);font-size:13px;color:var(--bone-dim);line-height:1.9">
-      EVERY SHARE PUT IN: ${money(p.contribution)}<br />
-      THE POT GROWS: ×${p.multiplier}<br />
-      THE POT IS SPLIT: ${p.n} WAYS, EVENLY, WHATEVER YOU DID
-    </p>
-    <p style="color:var(--bone-faint);font-size:13px;margin-top:8px">
-      Putting in makes everyone richer than it makes you. Skimming makes you richer than everyone. Both of those sentences are true at the same time, which is the whole problem.
-    </p>`;
-  }
-  return '';
 }
 
 /* ------------------------------------------------------------------- hand */
@@ -724,6 +728,16 @@ function powerPanel() {
 
 /* ---------------------------------------------------------------- squeeze */
 
+// What kind of move this is, in two or three words, above its name.
+const MOVE_KIND = {
+  half: 'give them something',
+  shield: 'cover yourself',
+  gamble: 'bet on the room',
+  muscle: 'make it cost them',
+  martyr: 'take the weight',
+  chance: 'take a chance',
+};
+
 function viewSqueeze() {
   const job = state.job;
   if (!job) return sittingOutNote();
@@ -731,6 +745,7 @@ function viewSqueeze() {
 
   return `
   <section>
+    ${actionStrip()}
     ${job.switched ? `<div class="twist-banner"><div class="tw-name">SWITCHED</div><div class="tw-body">Assignments were re-cut after the meeting. You are not locked in with the person you were talking to. You are locked in with <b>${esc(job.partners.map((p) => p.name).join(' and '))}</b>, and this is a different job entirely.</div></div>` : ''}
     ${job.switched ? jobCard(job) : `
       <p class="stamp">${esc(job.title)} · no. ${esc(job.caseNo)}</p>
@@ -740,12 +755,12 @@ function viewSqueeze() {
 
     ${job.lookout?.length ? `<div class="twist-banner" style="border-color:var(--gold)">
       <div class="tw-name">THE LOOKOUT</div>
-      <div class="tw-body">${job.lookout.map((l) => `${esc(l.name)} has locked in <b>${l.choice === 'stand' ? 'HOLD' : 'FOLD'}</b>`).join('. ')}.</div>
+      <div class="tw-body">${job.lookout.map((l) => `${esc(l.name)} has locked in <b>${esc(l.label)}</b>`).join('. ')}.</div>
     </div>` : ''}
 
     ${job.leak ? `<div class="twist-banner" style="border-color:var(--blood)">
       <div class="tw-name" style="color:var(--blood-bright)">THE WIRE</div>
-      <div class="tw-body">A little bird says ${esc(job.leak.from)} has already locked in <b>${job.leak.choice === 'stand' ? 'HOLD THE LINE' : 'TAKE THE DEAL'}</b>. Believe it or don’t.</div>
+      <div class="tw-body">A little bird says ${esc(job.leak.from)} has already locked in <b>${esc(job.leak.label ?? '')}</b>. Believe it or don’t.</div>
     </div>` : ''}
 
     ${job.incoming.length ? `<div class="whisper-in">
@@ -756,26 +771,27 @@ function viewSqueeze() {
     ${chosen ? `
       <div class="big-note" style="padding:26px 0">
         <div class="stamp" style="margin-bottom:10px">you locked in</div>
-        <div style="font-family:var(--mono);font-size:22px;letter-spacing:0.14em;color:${chosen === 'stand' ? 'var(--green)' : 'var(--blood-bright)'}">
-          ${chosen === 'stand' ? esc(job.stand.label) : esc(job.fold.label)}
+        <div style="font-family:var(--mono);font-size:22px;letter-spacing:0.14em;color:var(--gold)">
+          ${esc(job.options.find((o) => o.id === chosen)?.label ?? '')}
         </div>
         <div style="margin-top:14px;color:var(--bone-faint)">
           ${job.lockedCount} of ${job.groupSize} have decided. Nobody can change their mind now.
         </div>
       </div>` : `
-      <div class="choices">
-        <button class="choice stand" data-act="choose" data-choice="stand">
-          <span class="c-kind">hold the line</span>
-          <span class="c-label">${esc(job.stand.label)}</span>
-          <span class="c-blurb">${esc(job.stand.blurb)}</span>
-          ${job.matrix ? `<span class="c-pay">${money(job.matrix.R)} if they hold · ${money(job.matrix.S)} if they don’t</span>` : ''}
-        </button>
-        <button class="choice fold" data-act="choose" data-choice="fold">
-          <span class="c-kind">take the deal</span>
-          <span class="c-label">${esc(job.fold.label)}</span>
-          <span class="c-blurb">${esc(job.fold.blurb)}</span>
-          ${job.matrix ? `<span class="c-pay">${money(job.matrix.T)} if they hold · ${money(job.matrix.P)} if they don’t</span>` : ''}
-        </button>
+      <div class="choices n${job.options.length}">
+        ${job.options.map((o, i) => {
+          const first = i === 0;
+          const last = i === job.options.length - 1;
+          const cls = first ? 'stand' : last ? 'fold' : 'middle';
+          const kind = first ? 'hold the line' : last ? 'take the deal' : MOVE_KIND[o.archetype] ?? 'the other way';
+          return `
+        <button class="choice ${cls}" data-act="choose" data-choice="${esc(o.id)}">
+          <span class="c-kind">${kind}</span>
+          <span class="c-label">${esc(o.label)}</span>
+          <span class="c-blurb">${esc(o.blurb)}</span>
+          <span class="c-pay">${money(o.ifTheyHold)} if they hold \u00b7 ${money(o.ifTheyDont)} if they don\u2019t</span>
+        </button>`;
+        }).join('')}
       </div>
       ${handPanel()}
       ${markerPanel()}`}
@@ -791,14 +807,14 @@ function viewReckoning() {
   const others = rows.filter((g) => !g.yours);
 
   const groupBlock = (g, isMine) => `
-    <article class="dossier" data-case="${isMine ? 'YOUR JOB' : 'ELSEWHERE'}" style="margin-bottom:16px;border-left-color:${isMine ? 'var(--blood)' : 'var(--edge)'}">
+    <article class="dossier ${g.tone === 'action' ? 'action' : ''}" data-case="${isMine ? 'YOUR JOB' : 'ELSEWHERE'}" style="margin-bottom:16px;${g.tone === 'action' ? '' : `border-left-color:${isMine ? 'var(--blood)' : 'var(--edge)'}`}">
       <h2 style="font-size:17px">${esc(g.title)}</h2>
       <div class="reveal">
         ${g.members.map((m) => `
-          <div class="reveal-row ${m.choice ?? 'unknown'}">
+          <div class="reveal-row ${m.move == null ? 'unknown' : m.held ? 'stand' : m.sold ? 'fold' : 'middle'}">
             <div>
               <div class="reveal-name">${esc(m.name)}${m.brokePledge ? '<span class="tag broken">BROKE A PLEDGE</span>' : m.pledged ? '<span class="tag kept">KEPT HIS WORD</span>' : ''}${m.wentQuiet ? '<span class="tag quiet">SAID NOTHING</span>' : ''}${m.card ? `<span class="tag" style="color:var(--gold)">${esc(m.card.name.toUpperCase())}</span>` : ''}</div>
-              <div class="reveal-verdict ${m.choice ?? ''}">${m.choice === 'stand' ? 'HELD THE LINE' : m.choice === 'fold' ? 'TOOK THE DEAL' : 'YOU WERE NOT TOLD'}</div>
+              <div class="reveal-verdict ${m.held ? 'stand' : m.sold ? 'fold' : ''}">${m.move ? esc(m.move) : 'YOU WERE NOT TOLD'}</div>
             </div>
             <div class="reveal-amount ${m.total == null ? '' : m.total >= 0 ? 'pos' : 'neg'}">${m.total == null ? '—' : money(m.total)}</div>
           </div>`).join('')}
@@ -898,7 +914,7 @@ function viewVote() {
         ${state.players.filter((p) => !p.isYou).map((p) => `
           <button class="ghost-btn" data-act="vote" data-id="${p.id}" style="padding:14px 18px;font-size:13px">${esc(p.name)}</button>`).join('')}
       </div>`}
-    ${state.local && voted ? `<div class="row" style="justify-content:center;margin-top:18px"><button class="btn" data-act="seatDone">PASS IT ON</button></div>` : ''}
+    ${state.local && voted ? `<div class="row" style="justify-content:center;margin-top:18px"><button class="btn" data-act="seatDone">${state.local.seatCount > 1 ? 'PASS IT ON' : 'DONE'}</button></div>` : ''}
   </section>`;
 }
 
@@ -1060,7 +1076,12 @@ function winnerLine(L) {
 function bondVerdict(b) {
   const betrayals = b.betrayA + b.betrayB;
   if (b.rounds === 0) return 'never worked together';
-  if (betrayals === 0 && b.mutualFold === 0) return `<span style="color:var(--green)">clean, ${b.mutualStand}/${b.rounds}</span>`;
+  if (betrayals === 0 && b.mutualFold === 0 && b.murky === 0) {
+    return `<span style="color:var(--green)">clean, ${b.mutualStand}/${b.rounds}</span>`;
+  }
+  if (betrayals === 0 && b.mutualFold === 0) {
+    return `<span style="color:var(--gold)">never quite straight with each other</span>`;
+  }
   if (betrayals === 0) return `both folded ${b.mutualFold}× — mutually assured`;
   if (b.betrayA && b.betrayB) return `<span style="color:var(--blood-bright)">went both ways</span>`;
   const traitor = b.betrayA ? b.aName : b.bName;

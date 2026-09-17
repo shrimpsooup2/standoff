@@ -142,3 +142,17 @@ export function heatDelta({ folds, stands, n }) {
   const raw = folds * 8 - stands * 3.5;
   return Math.round(raw * (4 / Math.max(2, n)));
 }
+
+/**
+ * How often the night goes loud. Action jobs are the rare ones — roughly one in
+ * five across a night — and they get more likely the later it gets, because
+ * that is how evenings like this work.
+ */
+export function actionChance(round, totalRounds) {
+  if (round <= 1) return 0.08;
+  const progress = (round - 1) / Math.max(1, totalRounds - 1);
+  return 0.14 + progress * 0.18;
+}
+
+/** Twists written for an interview room don't belong on a rooftop. */
+export const DESK_TWISTS = ['notalk', 'openbook', 'wire', 'blind'];
