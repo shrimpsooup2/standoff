@@ -17,6 +17,29 @@ let signalUrl = null;                // where browsers get introduced to each ot
 
 const isPeer = () => !!peer;
 const isOnline = () => mode === 'online';
+
+/** Can this page put a table together at all? A server, or a way to find peers. */
+const canHost = () => socketReady || !!signalUrl;
+
+const sameOriginSignal = () =>
+  `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/signal`;
+
+/**
+ * Cross-device play needs an introduction service. A running server is its own;
+ * a static host has to be pointed at one. `?signal=` overrides both, which is
+ * how you try somebody else's without editing a file.
+ */
+async function findSignal() {
+  try {
+    const override = new URL(location.href).searchParams.get('signal');
+    if (override) { signalUrl = override; return; }
+  } catch { /* no URL */ }
+  if (signalUrl) return;                       // the health probe already found one
+  try {
+    const { SIGNAL_URL } = await import('./config.js');
+    if (SIGNAL_URL) signalUrl = SIGNAL_URL;
+  } catch { /* no config, no peer play */ }
+}
 let socketReady = false;
 let state = null;
 /**
@@ -100,7 +123,7 @@ function savedName() {
   try { return localStorage.getItem('standoff.name') ?? ''; } catch { return ''; }
 }
 function rememberName(name) {
-  try { rememberName(name); } catch { /* private window */ }
+  try { localStorage.setItem('standoff.name', name); } catch { /* private window */ }
 }
 let me = { playerId: null, token: null, code: null, name: savedName() };
 let draft = '';
@@ -216,6 +239,8 @@ async function serverPresent() {
     const body = await res.json();
     const lan = Array.isArray(body?.lan) ? body.lan[0] : null;
     if (lan) lanOrigin = `${location.protocol}//${lan}:${body.port ?? location.port}`;
+    // a host that can introduce browsers to each other is one we can use
+    if (body?.signal) signalUrl = sameOriginSignal();
     return !!body?.ok;
   } catch {
     return false;
@@ -384,7 +409,10 @@ async function startPeerGuest(code, name) {
   try {
     await guest.start();
     setLink('open');
-    guest.send({ t: 'join', code, name });
+    // the host's tab still knows this token, so a reload gets the same chair
+    const saved = readSession();
+    if (saved?.code === code && saved?.token) guest.send({ t: 'resume', code, token: saved.token });
+    else guest.send({ t: 'join', code, name });
   } catch (err) {
     peer = null;
     mode = null;
@@ -536,7 +564,7 @@ function renderRail() {
 function viewDoor() {
   const preset = codeFromUrl();
   // arriving on somebody's link: there is nothing to choose, just say who you are
-  if (preset && socketReady) {
+  if (preset && canHost()) {
     return `
     <section class="door">
       <h1 class="title">STANDOFF</h1>
@@ -559,10 +587,10 @@ function viewDoor() {
     </form>
 
     <div class="mode-grid">
-      ${socketReady ? `
+      ${canHost() ? `
         <button class="mode-btn" id="createBtn">
           <span class="mb-t">NEW TABLE</span>
-          <span class="mb-s">Everybody on their own phone. Share a four-letter code.</span>
+          <span class="mb-s">Everybody on their own phone. Put the QR code in the middle and let them scan it.</span>
         </button>
         <div class="row" style="gap:8px">
           <input type="text" id="codeInput" maxlength="4" placeholder="CODE" value="${esc(preset)}" style="flex:1;text-transform:uppercase" />
@@ -577,6 +605,11 @@ function viewDoor() {
         <span class="mb-s">On your own, against people who are not there. Good for learning what you are.</span>
       </button>
     </div>
+    ${canHost() ? '' : `<p class="no-table-note">
+      Everybody-on-their-own-phone needs somewhere for the phones to find each
+      other. Run <code>node server.js</code>, or point this page at one with
+      <code>?signal=</code>. The two below work with nothing at all.
+    </p>`}
 
     <div class="rule" style="max-width:340px;margin:30px auto"></div>
     <p class="stamp">how it works</p>
@@ -689,8 +722,13 @@ function viewLobby() {
 function inviteBlock(roster) {
   const link = joinUrl(state.code);
   const qr = qrFor(link);
+  const inTab = isPeer();
   return `
     <p class="stamp">point a camera at this</p>
+    ${inTab ? `<p class="hosting-note">
+      This table is running in this tab. Everybody else is connected straight to
+      this browser, so leave it open until the night is over.
+    </p>` : ''}
     <div class="invite">
       <div class="invite-qr">${qr || `<div class="code-big" style="margin:0">${esc(state.code)}</div>`}</div>
       <div class="invite-side">
@@ -1722,14 +1760,29 @@ function enterRoom(id) {
   if (!name) { toast('They need something to call you.'); $('#nameInput')?.focus(); return; }
   me.name = name;
   rememberName(name);
-  mode = 'online';
-  if (id === 'createBtn') send({ t: 'create', name });
-  else {
-    const code = ($('#codeInput')?.value ?? '').trim().toUpperCase();
-    if (code.length !== 4) { toast('Four letters. Ask again.'); return; }
-    send({ t: 'join', code, name });
+
+  const code = id === 'createBtn' ? null : ($('#codeInput')?.value ?? '').trim().toUpperCase();
+  if (id !== 'createBtn' && code.length !== 4) { toast('Four letters. Ask again.'); return; }
+
+  // A server here is the simple case. Without one the table lives in somebody's
+  // browser and the phones talk to it directly.
+  if (socketReady) {
+    mode = 'online';
+    if (id === 'createBtn') send({ t: 'create', name });
+    else send({ t: 'join', code, name });
+    return;
   }
+  if (!signalUrl) { toast('Nowhere to put a table. Try one device, or the ghosts.'); return; }
+  if (id === 'createBtn') startPeerHost(name);
+  else startPeerGuest(code, name);
 }
+
+window.addEventListener('beforeunload', (ev) => {
+  // only the browser-hosted table dies with the tab; a server keeps the rest
+  if (!(peer && peer.constructor?.name === 'PeerHost') || !state || state.phase === 'lobby') return;
+  ev.preventDefault();
+  ev.returnValue = '';
+});
 
 $('#cardBtn').addEventListener('click', showCard);
 $('#cardClose').addEventListener('click', () => $('#cardModal').classList.add('hidden'));
@@ -1740,7 +1793,21 @@ $('#cardModal').addEventListener('click', (ev) => {
 /* -------------------------------------------------------------------- go */
 
 app.innerHTML = viewDoor();
-serverPresent().then((live) => { if (live) connect(); else render(); });
+serverPresent()
+  .then(async (live) => {
+    if (live) { connect(); return; }
+    await findSignal();                        // maybe peers can still find each other
+    const saved = readSession();
+    const preset = codeFromUrl();
+    // a guest who reloaded: the table is in somebody else's tab, so walk back
+    // in through the front door rather than sitting on a dead screen
+    if (signalUrl && preset && saved?.code === preset && saved?.token) {
+      startPeerGuest(preset, me.name || 'someone');
+      return;
+    }
+    render();
+  })
+  .catch(() => render());
 // the QR encoder is only ever needed in an online lobby, and it is not worth
 // blocking the door on; draw again if we are already somewhere it shows
 import('./qr.js').then((m) => {

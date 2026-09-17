@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import fs from 'node:fs/promises';
 
 import net from 'node:net';
 
@@ -275,5 +276,19 @@ test('the health probe hands the page an address a phone can reach', async () =>
   for (const address of body.lan) {
     assert.ok(!/^(127\.|localhost)/.test(address), `${address} is not reachable from another device`);
     assert.match(address, /^\d+\.\d+\.\d+\.\d+$/);
+  }
+});
+
+test('the client has no function that calls only itself', async () => {
+  // rememberName() used to call rememberName(), so nobody's name was ever
+  // saved and the try/catch around it swallowed the stack overflow silently.
+  const src = await fs.readFile(new URL('../public/app.js', import.meta.url), 'utf8');
+  const bodies = src.matchAll(/function\s+([A-Za-z_$][\w$]*)\s*\([^)]*\)\s*\{([^{}]*(?:\{[^{}]*\}[^{}]*)*)\}/g);
+  for (const [, name, body] of bodies) {
+    const calls = [...body.matchAll(/\b([A-Za-z_$][\w$]*)\s*\(/g)].map((m) => m[1]);
+    if (!calls.includes(name)) continue;
+    // a real recursive function does something other than call itself
+    const other = calls.filter((c) => c !== name && !['if', 'for', 'while', 'switch', 'catch', 'return'].includes(c));
+    assert.ok(other.length > 0, `${name}() only ever calls itself`);
   }
 });

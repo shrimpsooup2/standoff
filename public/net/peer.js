@@ -25,6 +25,29 @@ const TICK_MS = 250;
 
 const json = (v) => JSON.stringify(v);
 
+/**
+ * Candidates start arriving the moment the other side has a local description,
+ * which is usually before we have set a remote one. addIceCandidate rejects
+ * until then, and a dropped candidate is often the difference between a
+ * connection and a twenty second wait for nothing. So hold them until there is
+ * somewhere to put them.
+ */
+function candidateQueue(pc) {
+  const waiting = [];
+  return {
+    async add(candidate) {
+      if (!pc.remoteDescription) { waiting.push(candidate); return; }
+      try { await pc.addIceCandidate(candidate); } catch { /* stale, or already known */ }
+    },
+    async flush() {
+      const queued = waiting.splice(0);
+      for (const c of queued) {
+        try { await pc.addIceCandidate(c); } catch { /* stale, or already known */ }
+      }
+    },
+  };
+}
+
 /** A data channel dressed up as the socket Room expects. */
 function channelSocket(channel, data = {}) {
   return {
@@ -105,7 +128,11 @@ export class PeerHost {
   onSignal(msg) {
     if (msg.t === 'arrived') return this.greet(msg.id);
     if (msg.t === 'signal' && msg.from && msg.data) return this.negotiate(msg.from, msg.data);
-    if (msg.t === 'left') return this.hangUp(msg.from ?? msg.id);
+    // The broker telling us a guest left means their *signalling* socket went,
+    // and every guest closes that on purpose once the data channel is up. It
+    // says nothing about the connection we actually play over, so it only
+    // cleans up a peer that never finished connecting.
+    if (msg.t === 'left') return this.giveUpOn(msg.id);
     if (msg.t === 'error') return this.onError?.(msg.msg);
     return undefined;
   }
@@ -115,7 +142,7 @@ export class PeerHost {
     if (this.peers.has(id)) return;
     const pc = new RTCPeerConnection({ iceServers: ICE });
     const channel = pc.createDataChannel('standoff', { ordered: true });
-    const entry = { pc, channel, socket: null };
+    const entry = { pc, channel, socket: null, ice: candidateQueue(pc) };
     this.peers.set(id, entry);
 
     pc.onicecandidate = (ev) => {
@@ -143,9 +170,21 @@ export class PeerHost {
     const entry = this.peers.get(id);
     if (!entry) return;
     try {
-      if (data.sdp) await entry.pc.setRemoteDescription(data.sdp);
-      else if (data.candidate) await entry.pc.addIceCandidate(data.candidate);
+      if (data.sdp) {
+        await entry.pc.setRemoteDescription(data.sdp);
+        await entry.ice.flush();
+      } else if (data.candidate) {
+        await entry.ice.add(data.candidate);
+      }
     } catch { /* a candidate that arrives too late is not worth a crash */ }
+  }
+
+  /** Drop a peer that never got as far as an open channel. */
+  giveUpOn(id) {
+    const entry = this.peers.get(id);
+    if (!entry) return;
+    if (entry.channel?.readyState === 'open') return;   // they are in; this was just the introduction ending
+    this.hangUp(id);
   }
 
   hangUp(id) {
@@ -182,6 +221,7 @@ export class PeerGuest {
 
   async start() {
     this.pc = new RTCPeerConnection({ iceServers: ICE });
+    this.ice = candidateQueue(this.pc);
     this.pc.onicecandidate = (ev) => {
       if (ev.candidate) this.signal.send({ t: 'signal', data: { candidate: ev.candidate } });
     };
@@ -208,8 +248,10 @@ export class PeerGuest {
     await this.signal.ready;
     this.signal.send({ t: 'guest', room: this.code });
     await open;
-    // the introduction is over; the channel is direct from here
-    this.signal.close();
+    // The channel is up, but candidates can still be trickling and a better
+    // route may yet be found. Give that a moment before hanging up on the
+    // broker — after this the two of them are on their own.
+    setTimeout(() => this.signal.close(), 5000);
   }
 
   async onSignal(msg) {
@@ -222,8 +264,9 @@ export class PeerGuest {
         const answer = await this.pc.createAnswer();
         await this.pc.setLocalDescription(answer);
         this.signal.send({ t: 'signal', data: { sdp: this.pc.localDescription } });
+        await this.ice.flush();
       } else if (msg.data.candidate) {
-        await this.pc.addIceCandidate(msg.data.candidate);
+        await this.ice.add(msg.data.candidate);
       }
     } catch { /* a stale candidate is not fatal */ }
     return undefined;
