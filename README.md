@@ -224,9 +224,9 @@ card, your hand and your job back.
 ## Layout
 
 ```
-server.js              http + static files + the socket upgrade
+server.js              http + static files + the socket upgrade + /signal
 src/net/wss.js         a small RFC 6455 server, no dependencies
-src/room.js            tables, seats, reconnection tokens, host migration, the tick loop
+src/broker.js          introduces two browsers to each other, and never sees the game
 src/persist.js         the night on disk, atomically, with a deadline on every write
 public/game/           the engine — plain ES modules, so it runs on both sides
   engine.js            the state machine: act, deal, talk, squeeze, reckoning, event, vote, ledger
@@ -238,8 +238,11 @@ public/game/           the engine — plain ES modules, so it runs on both sides
   options.js           the moves, what they trade off, and one resolver for any room size
   payoffs.js           the size of the stake
   roles.js twists.js bots.js
+public/net/room.js     tables, seats, tokens, host migration — the same file the server runs
 public/net/local.js    the engine running in the page: pass-and-play and solo
-public/app.js          one page, one render function, three transports
+public/net/peer.js     browser-hosted multiplayer over WebRTC, for static hosting
+public/config.js       the one setting: where browsers get introduced to each other
+public/app.js          one page, one render function, four transports
 public/style.css       the table: green baize, one hard light, and paper you can pick up
 public/qr.js           a QR encoder, so joining is a scan instead of a spelling test
 ```
