@@ -50,11 +50,14 @@ function drawFrom(deck, key, all, rng, { final = false } = {}) {
  * Build one playable job for a group of players.
  * `members` are `{ id, name }`, in seating order.
  */
-export function makeJob(rng, { kind, members, deck, final = false, callback = null, action = false }) {
-  let base;
+export function makeJob(rng, { kind, members, deck, final = false, callback = null, action = false, scenario = null }) {
+  // A scenario handed in directly is a scripted job: the tutorial uses this so
+  // it teaches the same thing every time instead of hoping the deck cooperates.
+  let base = scenario ?? null;
   let ordered = members;
 
-  if (action && !callback) {
+  if (base) { /* scripted */ }
+  else if (action && !callback) {
     // The loud ones: same dilemma, no chairs.
     base = drawFrom(deck, ACTION_KEYS[kind] ?? 'actionPair', ACTION_POOLS[kind] ?? ACTION_PAIR, rng);
   } else if (callback) {
@@ -181,6 +184,10 @@ export function narrate(job, members, picks) {
 
   const ctx = {
     ...job.ctx,
+    // a job written for two can end up in front of three, and the line it falls
+    // back to may still want to name somebody
+    traitor: bad[0]?.member.name ?? coop[0]?.member.name ?? 'somebody',
+    victim: coop[0]?.member.name ?? middle[0]?.member.name ?? 'somebody',
     standCount: coop.length,
     foldCount: bad.length,
     middleCount: middle.length,
@@ -194,19 +201,20 @@ export function narrate(job, members, picks) {
 
   // The written closers. The pure outcomes keep the paragraph the job was
   // written with; anything murkier gets the line written for murky.
+  // A job written for a table can end up in front of two people, and a job
+  // written for two can end up with a third in the room. Either way there is
+  // always a line to print.
+  const o = job.outcomes;
   let closer;
-  if (shape === 'clean') closer = pair ? job.outcomes.bothStand : job.outcomes.allStand;
-  else if (shape === 'ruin') closer = pair ? job.outcomes.bothFold : job.outcomes.allFold;
+  if (shape === 'clean') closer = (pair ? o.bothStand : o.allStand) ?? o.allStand ?? o.bothStand;
+  else if (shape === 'ruin') closer = (pair ? o.bothFold : o.allFold) ?? o.allFold ?? o.bothFold;
   else if (shape === 'betrayed') {
-    closer = pair ? job.outcomes.betray : job.outcomes.mixed;
-    if (pair) {
-      ctx.traitor = bad[0]?.member.name ?? 'somebody';
-      ctx.victim = coop[0]?.member.name ?? 'somebody';
-    }
+    closer = (pair ? o.betray : o.mixed) ?? o.mixed ?? o.betray;
   } else {
     closer = job.closers?.[shape] ?? job.closers?.murky
-      ?? (pair ? job.outcomes.bothFold : job.outcomes.mixed);
+      ?? (pair ? o.bothFold : o.mixed) ?? o.mixed ?? o.bothFold;
   }
+  if (typeof closer !== 'string') closer = o.mixed ?? o.allFold ?? o.bothFold ?? '';
 
   // The pure outcomes were written as whole paragraphs and already say who did
   // what, so they stand on their own. A murkier room needs the moves read back

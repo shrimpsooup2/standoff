@@ -9,6 +9,7 @@ import { botWhisper, botChoice, botAccusation, botCard, botVote } from './bots.j
 import { CARD_BY_ID, dealHand, handSize, drawCard } from './cards.js';
 import { pickEvent, EVENT_BY_ID } from './events.js';
 import { tableProfile, actForRound, ACTS, assignCrews, CREWS, heatBand, heatDelta, actionChance, DESK_TWISTS } from './director.js';
+import { pickVariation, beatsFor, TUTORIAL_WRINKLES } from './tutorial.js';
 
 export const PHASES = ['lobby', 'act', 'deal', 'talk', 'squeeze', 'reckoning', 'event', 'vote', 'accusation', 'ledger'];
 
@@ -169,6 +170,91 @@ export class Game {
     return { ok: true };
   }
 
+  /**
+   * FIRST NIGHT. Three short scripted jobs that teach the whole game by playing
+   * it: the choice, the moves in between, then the table and the cards. No rat,
+   * no heat, no events — those are what makes the real night long, and a
+   * tutorial that runs long is a tutorial nobody finishes.
+   */
+  startTutorial() {
+    if (this.phase !== 'lobby') return { error: 'Already dealt in.' };
+    if (this.players.size < 2) return { error: 'You need at least two people to betray each other.' };
+
+    const variation = pickVariation(this.rng, this.lastTutorialId ?? null);
+    this.tutorial = {
+      id: variation.id,
+      name: variation.name,
+      coachName: variation.coachName,
+      coachRole: variation.coachRole,
+      opening: variation.opening,
+      closing: variation.closing,
+      wrinkle: this.rng.pick(TUTORIAL_WRINKLES),
+      beats: beatsFor(variation, this.players.size),
+      index: 0,
+    };
+    this.config = { ...this.config, rounds: this.tutorial.beats.length, cards: true };
+    this.roundsAuto = false;
+    this.profile = {
+      ...tableProfile(this.players.size),
+      hasRat: false, hasVotes: false, hasCrews: false,
+      tableRoundEvery: 0, eventChance: 0, callbackChance: 0,
+    };
+    this.ratId = null;
+    this.crews = null;
+    this.heat = 0;
+    for (const p of this.players.values()) {
+      p.role = null;
+      p.hand = [];
+      p.markers = 0;
+    }
+    this.round = 0;
+    this.act = null;
+    this.nextRound();
+    return { ok: true };
+  }
+
+  /** Build one scripted beat instead of dealing from the decks. */
+  dealTutorialRound() {
+    const beat = this.tutorial.beats[this.round - 1];
+    const ids = this.order.slice();
+    // cards only turn up for the last beat, once there is something to use them on
+    const lastBeat = this.round === this.tutorial.beats.length;
+    for (const p of this.players.values()) {
+      p.markerTarget = null;
+      p.roundNote = null;
+      p.playedThisRound = null;
+      p.hand = lastBeat ? dealHand(this.rng, ids.length, p.hand) : [];
+    }
+
+    this.twist = TWIST_BY_ID.clean;
+    this.actionRound = false;
+    const groupings = beat.kind === 'table' ? [ids] : this.buildPairings(ids);
+    const stakes = 1 + (this.round - 1) * 0.5;
+
+    this.groups = groupings.filter((g) => g.length > 0).map((memberIds, i) => {
+      const members = memberIds.map((id) => ({ id, name: this.players.get(id).name }));
+      const kind = beat.kind === 'table' ? 'table' : memberIds.length >= 3 ? 'trio' : 'pair';
+      const job = makeJob(this.rng, { kind, members, deck: this.deck, scenario: beat.job });
+      const group = {
+        id: `t${this.round}_${i}`,
+        kind,
+        memberIds: memberIds.slice(),
+        talkMemberIds: memberIds.slice(),
+        job, stakes,
+        choices: {}, publicChoices: {}, lockOrder: [],
+        whispers: {}, pledges: {}, cards: {},
+        leak: null, result: null,
+      };
+      group.stake = groupParams(this.rng, memberIds.length, stakes);
+      group.stake.unit = group.stake.contribution;
+      return group;
+    });
+
+    this.phase = 'deal';
+    this.setDeadline('deal');
+    this.bump();
+  }
+
   beginAct(act) {
     this.act = act;
     this.phase = 'act';
@@ -270,6 +356,7 @@ export class Game {
     this.round += 1;
     this.event = null;
     this.vote = null;
+    if (this.tutorial) { this.dealTutorialRound(); return; }
 
     const ids = this.order.slice();
     for (const p of this.players.values()) {
@@ -938,7 +1025,10 @@ export class Game {
         else if (this.heldLine(g, pid)) stands++;
       }
     }
-    this.heat = Math.max(0, Math.min(100, this.heat + heatDelta({ folds, stands, n: Math.max(2, this.players.size) })));
+    // a practice night never brings the heat on; there is no week after it
+    if (!this.tutorial) {
+      this.heat = Math.max(0, Math.min(100, this.heat + heatDelta({ folds, stands, n: Math.max(2, this.players.size) })));
+    }
     roundLog.heat = this.heat;
     this.history.push(roundLog);
 
@@ -960,6 +1050,7 @@ export class Game {
   // ----------------------------------------------------------------- events ---
 
   shouldEvent() {
+    if (this.tutorial) return false;
     if (this.round >= this.config.rounds) return false;
     if (this.round < 1) return false;
     if (this.heat >= 75) return true;
@@ -1121,8 +1212,11 @@ export class Game {
       case 'talk': this.beginSqueeze(); break;
       case 'squeeze': this.resolve(); break;
       case 'reckoning':
-        if (this.round >= this.config.rounds) this.beginAccusation();
-        else if (this.shouldEvent()) this.beginEvent();
+        if (this.round >= this.config.rounds) {
+          if (this.tutorial) this.finish();
+          else this.beginAccusation();
+        } else if (!this.tutorial && this.shouldEvent()) this.beginEvent();
+        else if (this.tutorial) this.nextRound();
         else this.afterEvent();
         break;
       case 'vote': this.resolveVote(); break;
@@ -1140,12 +1234,17 @@ export class Game {
   }
 
   rematch() {
+    const wasTutorial = !!this.tutorial;
     const roster = this.order.map((id) => {
       const p = this.players.get(id);
       return { id, name: p.name, bot: p.bot, strategy: p.strategy, connected: p.connected };
     });
-    const fresh = new Game({ code: this.code, config: { ...this.config } });
-    fresh.roundsAuto = this.roundsAuto;
+    const fresh = new Game({
+      code: this.code,
+      config: wasTutorial ? { pace: this.config.pace, timers: this.config.timers, cards: true } : { ...this.config },
+    });
+    fresh.roundsAuto = wasTutorial ? true : this.roundsAuto;
+    if (wasTutorial) fresh.lastTutorialId = this.tutorial.id;
     for (const r of roster) {
       const p = fresh.addPlayer(r);
       p.connected = r.connected;
@@ -1182,6 +1281,18 @@ export class Game {
       sittingOut: this.sittingOut ? { id: this.sittingOut, name: nameOf(this.sittingOut) } : null,
       version: this.version,
       actionRound: !!this.actionRound,
+      tutorial: this.tutorial ? {
+        name: this.tutorial.name,
+        coachName: this.tutorial.coachName,
+        coachRole: this.tutorial.coachRole,
+        opening: this.tutorial.opening,
+        closing: this.tutorial.closing,
+        wrinkle: this.tutorial.wrinkle,
+        beat: this.round,
+        beats: this.tutorial.beats.length,
+        teach: this.tutorial.beats[this.round - 1]?.teach ?? null,
+        says: this.tutorial.beats[this.round - 1]?.coach?.[this.phase] ?? null,
+      } : null,
       players: this.livePlayers.map((p) => ({
         id: p.id, name: p.name, bot: p.bot,
         strategy: p.bot ? p.strategy : null,
@@ -1362,6 +1473,7 @@ export class Game {
 
     return {
       standings, bonds,
+      tutorial: this.tutorial ?? null,
       awards: this.awards,
       heat: this.heat,
       crews: this.crewResult ?? null,
@@ -1423,3 +1535,46 @@ export function computeAwards(game) {
   }
   return awards;
 }
+
+/* --------------------------------------------------------------- saving ---
+ *
+ * A night in progress is a plain object plus a 32-bit number, so it can be
+ * written to disk and picked up again exactly where it was — same cards, same
+ * jobs, same money. Nothing here reaches for the network or the clock.
+ */
+
+const MAP_FIELDS = ['players', 'bonds'];
+const SET_FIELDS = ['usedEvents', 'readySet'];
+const SKIP_FIELDS = new Set(['rng', 'deadline']);
+
+export function serializeGame(game) {
+  const out = { __v: 1, rngState: game.rng.state() };
+  for (const [key, value] of Object.entries(game)) {
+    if (SKIP_FIELDS.has(key)) continue;
+    if (MAP_FIELDS.includes(key)) out[key] = [...value.entries()];
+    else if (SET_FIELDS.includes(key)) out[key] = [...value];
+    else out[key] = value;
+  }
+  // a deadline is wall-clock, so it is stored as time remaining instead
+  out.remainingMs = game.deadline ? Math.max(0, game.deadline - Date.now()) : null;
+  return out;
+}
+
+export function deserializeGame(data) {
+  if (!data || data.__v !== 1) return null;
+  const game = new Game({ code: data.code, seed: data.seed, config: data.config });
+  for (const [key, value] of Object.entries(data)) {
+    if (key === '__v' || key === 'rngState' || key === 'remainingMs') continue;
+    if (MAP_FIELDS.includes(key)) game[key] = new Map(value);
+    else if (SET_FIELDS.includes(key)) game[key] = new Set(value);
+    else game[key] = value;
+  }
+  game.rng = makeRng(data.seed, data.rngState);
+  game.deadline = data.remainingMs == null ? null : Date.now() + data.remainingMs;
+  // sockets are gone; everybody is treated as away until they say otherwise
+  for (const p of game.players.values()) if (!p.bot) p.connected = false;
+  return game;
+}
+
+Game.prototype.toJSON = function toJSON() { return serializeGame(this); };
+Game.fromJSON = deserializeGame;

@@ -10,9 +10,16 @@ export function hashSeed(str) {
   return h >>> 0;
 }
 
-/** mulberry32 — small, fast, good enough for card games and dirty deals. */
-export function makeRng(seed) {
-  let a = typeof seed === 'number' ? seed >>> 0 : hashSeed(String(seed));
+/**
+ * mulberry32 — small, fast, good enough for card games and dirty deals.
+ *
+ * The whole generator is one 32-bit number, which means a game in progress can
+ * be written to disk and picked up again dealing exactly the cards it was
+ * always going to deal.
+ */
+export function makeRng(seed, state = null) {
+  let a = state != null ? state >>> 0
+    : typeof seed === 'number' ? seed >>> 0 : hashSeed(String(seed));
   const rng = () => {
     a = (a + 0x6d2b79f5) >>> 0;
     let t = a;
@@ -31,6 +38,7 @@ export function makeRng(seed) {
     }
     return out;
   };
+  rng.state = () => a >>> 0;
   /** Pick `n` distinct items; falls back to repeats if the pool is too small. */
   rng.sample = (arr, n) => {
     if (arr.length >= n) return rng.shuffle(arr).slice(0, n);

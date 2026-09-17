@@ -179,20 +179,24 @@ test('three friends play a whole night through real sockets', async () => {
       await host.until((y) => y.state.phase !== 'reckoning', 'the round to turn over');
       // an event or a new act may sit between jobs
       for (let i = 0; i < 8 && host.state.phase !== 'deal'; i++) {
-        if (host.state.phase === 'vote') {
+        const was = host.state.phase;
+        if (was === 'vote') {
           for (const x of all) x.send({ t: 'vote', target: x.state.players.find((p) => !p.isYou).id });
         } else {
           host.send({ t: 'skip' });
         }
-        await new Promise((r) => setTimeout(r, 180));
+        try { await host.until((x) => x.state.phase !== was, `${was} to move on`, 1500); } catch { /* try again */ }
       }
       await Promise.all(all.map((x) => x.until((y) => y.state.round === round + 1, 'next round')));
     }
   }
 
+  // nudge forward one phase at a time, waiting for each move to land, so a
+  // skip can never overshoot the phase we are trying to reach
   for (let i = 0; i < 8 && host.state.phase !== 'accusation'; i++) {
+    const was = host.state.phase;
     host.send({ t: 'skip' });
-    await new Promise((r) => setTimeout(r, 180));
+    try { await host.until((x) => x.state.phase !== was, `${was} to move on`, 1500); } catch { /* try again */ }
   }
   await Promise.all(all.map((x) => x.phase('accusation')));
   for (const x of all) {
@@ -258,7 +262,7 @@ test('the door is closed once the cards are dealt', async () => {
   const wrongRoom = await new Client('Lost').open();
   wrongRoom.send({ t: 'join', code: 'ZZZZ', name: 'Lost' });
   await wrongRoom.until((x) => x.errors.length > 0, 'no such room');
-  assert.match(wrongRoom.errors[0], /No room/i);
+  assert.match(wrongRoom.errors[0], /No table/i);
 
   [host, pal, latecomer, wrongRoom].forEach((x) => x.close());
 });

@@ -19,8 +19,47 @@ It is a prisoner's dilemma wearing a very nice suit and holding a hand of cards.
 node server.js      # then open http://localhost:8787
 ```
 
-The server prints your LAN address on boot so people on the same wifi can just type
-it in. No dependencies, no build step, no accounts.
+The host is just somebody's laptop. It prints your LAN address on boot so people on
+the same wifi type it straight into a phone. No dependencies, no build step, no
+accounts, and nothing that needs the internet.
+
+### Start with a First Night
+
+Before the real thing, the host can deal **FIRST NIGHT**: three short scripted jobs
+with somebody in-character talking the table through them. It takes about five
+minutes, it is a real game with real money and a little ledger at the end, and none
+of it counts.
+
+It teaches in order — a straight two-way choice, then a job with four ways out and
+the whispers and pledges, then the whole table and the cards — and it shapes itself
+around who turned up. Two people never get a whole-table round, because there is no
+table. There are three variations (a bakery, a pier, a social club) so the second
+group you teach does not sit through the same script, and it will not deal you the
+same one twice in a row. When it ends, the button says **NOW PLAY IT FOR REAL** and
+everything that was left out — the rat, the heat, the events, the acts — comes back on.
+
+### Built to survive the evening
+
+The laptop will be closed, slept, unplugged and carried into another room, and the
+wifi will drop at least once. None of that is allowed to end the game:
+
+- **The night is on disk.** Every change is written atomically, so a crash, a restart
+  or a flat battery picks up the same round, the same jobs, the same hands and the
+  same money. The generator is one 32-bit number, so a resumed game deals exactly
+  the cards it was always going to deal.
+- **Reconnection is automatic.** Close the tab, change wifi, lock the phone — you get
+  your seat, your secret card and your hand back. Anything you tapped while the
+  connection was away is queued and sent when it returns.
+- **The host is whoever is in the room.** If the person who opened the table walks
+  out, somebody else picks up the controls immediately.
+- **Nothing a client sends can take it down.** Malformed messages, enormous payloads,
+  deeply nested objects and floods are all handled; a flood gets told to slow down
+  rather than thrown out. One broken table can never stop the others.
+- **A dead disk is not a dead game.** If it cannot write — read-only folder, full
+  disk, a filesystem that simply stops answering — it says so once and keeps playing.
+
+All of that is covered by tests that actually do it: SIGTERM and SIGKILL mid-round,
+the host walking out, garbage down the socket, two devices on one seat.
 
 **On GitHub Pages** (or any static host) there is no server to keep a socket open,
 so the client runs the whole engine in the browser: *one device* and *against the
@@ -171,7 +210,7 @@ BROTHERS, THE MAGICIAN: folded, and the table never found out).
 |---|---|
 | `npm start` | serve on `http://localhost:8787` |
 | `PORT=3000 npm start` | serve somewhere else |
-| `npm test` | 59 tests: the balance of every move, that the books add up, card rules, seizure ordering, every mix of moves narrating at every table size, information hiding, and a full night over real sockets |
+| `npm test` | 76 tests: the balance of every move, that the books add up, card rules, seizure ordering, every mix of moves narrating at every table size, information hiding, the tutorial at every group size, a full night over real sockets, and a host that gets restarted, killed, flooded and fed garbage |
 | `npm run dev` | restart on save |
 
 Sessions survive a dropped connection — reopen the page and you get your seat, your
@@ -182,13 +221,15 @@ card, your hand and your job back.
 ```
 server.js              http + static files + the socket upgrade
 src/net/wss.js         a small RFC 6455 server, no dependencies
-src/room.js            rooms, seats, reconnection tokens, the tick loop
+src/room.js            tables, seats, reconnection tokens, host migration, the tick loop
+src/persist.js         the night on disk, atomically, with a deadline on every write
 public/game/           the engine — plain ES modules, so it runs on both sides
   engine.js            the state machine: act, deal, talk, squeeze, reckoning, event, vote, ledger
   scenarios.*.js       the writing — desk jobs, the loud ones, callbacks, and the grammar that varies them
   cards.js             the hand
   events.js            what happens between jobs
   director.js          acts, crews, heat, and how the night scales with the table
+  tutorial.js          First Night: three variations of a five-minute lesson
   options.js           the moves, what they trade off, and one resolver for any room size
   payoffs.js           the size of the stake
   roles.js twists.js bots.js

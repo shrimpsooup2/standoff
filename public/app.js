@@ -14,7 +14,13 @@ let local = null;
 let mode = null;                     // 'online' | 'device' | 'solo'
 let socketReady = false;
 let state = null;
-let me = { playerId: null, token: null, code: null, name: localStorage.getItem('standoff.name') ?? '' };
+function savedName() {
+  try { return localStorage.getItem('standoff.name') ?? ''; } catch { return ''; }
+}
+function rememberName(name) {
+  try { rememberName(name); } catch { /* private window */ }
+}
+let me = { playerId: null, token: null, code: null, name: savedName() };
 let draft = '';
 let clockOffset = 0;
 let phaseStart = Date.now();
@@ -38,15 +44,57 @@ function toast(msg) {
   setTimeout(() => el.remove(), 4200);
 }
 
+// Anything the player does while the connection is away is kept and sent the
+// moment it comes back, so a dropped signal costs you nothing but the wait.
+const outbox = [];
+const NEVER_QUEUE = new Set(['ping', 'create', 'join', 'resume']);
+
 function send(obj) {
   if (mode === 'online') {
-    if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(obj));
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      try { ws.send(JSON.stringify(obj)); return; } catch { /* fall through to the outbox */ }
+    }
+    if (!NEVER_QUEUE.has(obj.t)) {
+      outbox.push(obj);
+      if (outbox.length > 40) outbox.shift();
+      renderLink();
+    }
     return;
   }
   if (local) {
     local.send(obj);
     if (local.error) { toast(local.error); local.error = null; }
   }
+}
+
+function drainOutbox() {
+  while (outbox.length && ws && ws.readyState === WebSocket.OPEN) {
+    const next = outbox.shift();
+    try { ws.send(JSON.stringify(next)); } catch { outbox.unshift(next); break; }
+  }
+  renderLink();
+}
+
+/** A quiet line about the connection, only when there is something to say. */
+let link = { state: 'idle', since: 0, attempts: 0 };
+function setLink(state) {
+  if (link.state === state) return;
+  link = { ...link, state, since: Date.now() };
+  renderLink();
+}
+function renderLink() {
+  const el = document.getElementById('link');
+  if (!el) return;
+  const waiting = outbox.length;
+  if (mode !== 'online' || link.state === 'open') {
+    el.className = 'link hidden';
+    el.textContent = '';
+    return;
+  }
+  el.className = 'link';
+  el.textContent = link.state === 'lost'
+    ? `Reconnecting…${waiting ? ` ${waiting} move${waiting === 1 ? '' : 's'} waiting` : ''}`
+    : 'Connecting…';
 }
 
 function applyState(next) {
@@ -83,6 +131,9 @@ async function serverPresent() {
   }
 }
 
+let heartbeat = null;
+let lastSeq = -1;
+
 function connect() {
   let url;
   try {
@@ -91,45 +142,91 @@ function connect() {
     url = `${proto}://${location.host}`;
   } catch { return; }
 
-  try { ws = new WebSocket(url); } catch { return; }
+  setLink(link.attempts ? 'lost' : 'connecting');
+  try { ws = new WebSocket(url); } catch { scheduleReconnect(); return; }
 
   ws.onopen = () => {
     socketReady = true;
-    reconnectDelay = 500;
-    if (!mode) render();
-    const saved = JSON.parse(localStorage.getItem('standoff.session') ?? 'null');
+    link.attempts = 0;
+    setLink('open');
+    const saved = readSession();
     if (saved?.code && saved?.token) send({ t: 'resume', code: saved.code, token: saved.token });
+    else if (!mode) render();
+    drainOutbox();
+    clearInterval(heartbeat);
+    // a phone that went to sleep looks identical to a dead server until you ask
+    heartbeat = setInterval(() => {
+      if (ws && ws.readyState === WebSocket.OPEN) send({ t: 'ping' });
+    }, 20000);
   };
 
   ws.onmessage = (ev) => {
     let msg;
     try { msg = JSON.parse(ev.data); } catch { return; }
+    if (msg.t === 'pong') return;
     if (msg.t === 'welcome') {
       mode = 'online';
       me.playerId = msg.playerId;
       me.token = msg.token;
       me.code = msg.code;
-      localStorage.setItem('standoff.session', JSON.stringify({ code: msg.code, token: msg.token }));
-      history.replaceState(null, '', `#${msg.code}`);
+      writeSession({ code: msg.code, token: msg.token });
+      try { history.replaceState(null, '', `#${msg.code}`); } catch { /* not allowed here */ }
+      lastSeq = -1;
     } else if (msg.t === 'state') {
       if (mode !== 'online') return;
+      // frames can arrive out of order after a reconnect; only move forwards
+      if (typeof msg.state?.seq === 'number') {
+        if (msg.state.seq < lastSeq) return;
+        lastSeq = msg.state.seq;
+      }
       applyState(msg.state);
     } else if (msg.t === 'error') {
+      // a table that no longer exists is worth forgetting, or every reload
+      // tries to rejoin a game that ended days ago
+      if (/no table/i.test(msg.msg)) clearSession();
       toast(msg.msg);
     }
   };
 
   ws.onclose = () => {
-    if (mode === 'online') {
-      setTimeout(connect, reconnectDelay);
-      reconnectDelay = Math.min(reconnectDelay * 2, 8000);
-    } else {
-      socketReady = false;
-      if (!mode) render();
-    }
+    clearInterval(heartbeat);
+    socketReady = false;
+    if (mode === 'online' || readSession()) scheduleReconnect();
+    else { setLink('idle'); if (!mode) render(); }
   };
   ws.onerror = () => { try { ws.close(); } catch { /* ignore */ } };
 }
+
+/**
+ * Back off, but with jitter, so a laptop lid closing on six phones at once
+ * does not bring them all back in the same millisecond.
+ */
+function scheduleReconnect() {
+  setLink('lost');
+  link.attempts += 1;
+  const base = Math.min(500 * 2 ** Math.min(link.attempts, 5), 10000);
+  const delay = base / 2 + Math.random() * (base / 2);
+  setTimeout(connect, delay);
+}
+
+function readSession() {
+  try { return JSON.parse(localStorage.getItem('standoff.session') ?? 'null'); } catch { return null; }
+}
+function writeSession(value) {
+  try { localStorage.setItem('standoff.session', JSON.stringify(value)); } catch { /* private window */ }
+}
+function clearSession() {
+  try { localStorage.removeItem('standoff.session'); } catch { /* private window */ }
+}
+
+// coming back from a locked phone or a background tab should feel instant
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState !== 'visible') return;
+  if (mode === 'online' && (!ws || ws.readyState > WebSocket.OPEN)) { link.attempts = 0; connect(); }
+});
+window.addEventListener('online', () => {
+  if (mode === 'online' && (!ws || ws.readyState > WebSocket.OPEN)) { link.attempts = 0; connect(); }
+});
 
 async function startLocal(kind) {
   const { LocalTable } = await import('./net/local.js');
@@ -390,6 +487,12 @@ function viewLobby() {
         <button class="ghost-btn ${state.config.cards ? 'on' : ''}" data-act="toggleCards">${state.config.cards ? 'CARDS ON' : 'NO CARDS'}</button>
         <button class="ghost-btn" data-act="addBot">+ GHOST</button>
       </div>
+      <button class="btn tutorial-btn" data-act="tutorial" ${roster.length < 2 && mode !== 'solo' ? 'disabled' : ''} style="width:100%;margin-bottom:10px">
+        FIRST NIGHT \u00b7 LEARN IT IN FIVE MINUTES
+      </button>
+      <p style="color:var(--bone-faint);font-size:13px;text-align:center;margin:-4px 0 12px">
+        Three short jobs with somebody talking you through them. A real game, and none of it counts.
+      </p>
       <button class="btn" data-act="start" ${roster.length < 2 && mode !== 'solo' ? 'disabled' : ''} style="width:100%">
         ${roster.length < 2 && mode !== 'solo' ? 'WAITING FOR SOMEBODY TO BETRAY'
           : `DEAL IN · ${mode === 'solo' ? 'YOU AND THREE GHOSTS' : `${roster.length} PLAYERS`} · ${state.config.rounds} ROUNDS`}
@@ -473,11 +576,17 @@ function jobCard(job, { showPressure = true } = {}) {
   const list = names.length > 1
     ? `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}`
     : names[0] ?? 'nobody';
-  const who = job.kind === 'table'
-    ? `the whole table · ${names.length + 1} of you`
-    : job.kind === 'trio'
-      ? `three-handed · you, ${list}`
-      : `you and ${list}`;
+  const shared = job.sharedNames;
+  const sharedList = shared && shared.length > 1
+    ? `${shared.slice(0, -1).join(', ')} and ${shared[shared.length - 1]}`
+    : shared?.[0] ?? '';
+  const who = shared
+    ? (job.kind === 'table' ? `the whole table · ${sharedList}` : sharedList)
+    : job.kind === 'table'
+      ? `the whole table · ${names.length + 1} of you`
+      : job.kind === 'trio'
+        ? `three-handed · you, ${list}`
+        : `you and ${list}`;
   const cbLabel = {
     grudge: 'THIS ONE HAS HISTORY',
     feud: 'THIS ONE HAS A BODY COUNT',
@@ -500,9 +609,12 @@ function jobCard(job, { showPressure = true } = {}) {
 
 function viewDeal() {
   const job = state.job;
+  // a shared screen has no "you" — everybody reads the dossiers together
+  if (!job && state.briefing?.length) return viewBriefing();
   if (!job) return sittingOutNote();
   return `
   <section>
+    ${coachPanel()}
     ${actionStrip()}
     ${heatNote()}
     ${twistBanner()}
@@ -513,6 +625,31 @@ function viewDeal() {
       ${state.twist?.id === 'notalk' ? 'No talking on this one. The squeeze comes straight away.' : 'Table talk in a moment. Think about what you are going to say.'}
     </p>
     ${state.isHost ? `<div class="row" style="justify-content:center;margin-top:12px"><button class="ghost-btn" data-act="skip">SKIP AHEAD</button></div>` : ''}
+  </section>`;
+}
+
+/** Every job on the table at once, for a room sharing one screen. */
+function viewBriefing() {
+  const many = state.briefing.length > 1;
+  return `
+  <section>
+    ${coachPanel()}
+    ${actionStrip()}
+    ${heatNote()}
+    ${twistBanner()}
+    ${many ? `<p class="stamp" style="margin-bottom:12px">${state.briefing.length} rooms tonight \u00b7 find yours</p>` : ''}
+    ${state.briefing.map((b) => `
+      ${many ? `<p class="stamp" style="margin:22px 0 8px;color:var(--gold)">${esc(b.names.join(' &amp; '))}</p>` : ''}
+      ${jobCard(b.job)}
+      <div class="rule"></div>
+      ${payoffPanel(b.job)}
+    `).join('')}
+    <p class="waiting" style="text-align:center;margin-top:18px">
+      Read it together. Nobody chooses anything yet.
+    </p>
+    <div class="row" style="justify-content:center;margin-top:12px">
+      <button class="btn" data-act="skip">EVERYBODY\u2019S READ IT</button>
+    </div>
   </section>`;
 }
 
@@ -530,6 +667,18 @@ function sittingOutNote() {
   return `<div class="big-note">You are not on this one. Watch.
     ${state.isHost ? `<div class="row" style="justify-content:center;margin-top:16px"><button class="ghost-btn" data-act="skip">SKIP AHEAD</button></div>` : ''}
   </div>`;
+}
+
+function coachPanel() {
+  const t = state.tutorial;
+  if (!t) return '';
+  const line = t.says;
+  return `
+    <div class="coach">
+      <div class="coach-who">${esc(t.coachName)} \u00b7 ${esc(t.coachRole)}</div>
+      ${line ? `<div class="coach-says">\u201c${esc(line)}\u201d</div>` : ''}
+      <div class="coach-beat">FIRST NIGHT \u00b7 ${t.beat} OF ${t.beats}${t.teach ? ` \u00b7 ${esc(t.teach)}` : ''}</div>
+    </div>`;
 }
 
 function actionStrip() {
@@ -636,6 +785,7 @@ function viewTalk() {
 
   return `
   <section>
+    ${coachPanel()}
     ${twistBanner()}
     ${declaredPanel()}
     <p class="stamp">you have a minute with ${esc(partners)}</p>
@@ -745,6 +895,7 @@ function viewSqueeze() {
 
   return `
   <section>
+    ${coachPanel()}
     ${actionStrip()}
     ${job.switched ? `<div class="twist-banner"><div class="tw-name">SWITCHED</div><div class="tw-body">Assignments were re-cut after the meeting. You are not locked in with the person you were talking to. You are locked in with <b>${esc(job.partners.map((p) => p.name).join(' and '))}</b>, and this is a different job entirely.</div></div>` : ''}
     ${job.switched ? jobCard(job) : `
@@ -948,10 +1099,18 @@ function viewLedger() {
   const L = state.ledger;
   if (!L) return '<div class="big-note">Counting.</div>';
   const winner = L.standings[0];
+  const tut = L.tutorial;
 
   return `
   <section>
-    <p class="stamp">the ledger · ${state.totalRounds} jobs · ${state.players.length} at the table</p>
+    ${tut ? `<div class="coach" style="margin-bottom:20px">
+      <div class="coach-who">${esc(tut.coachName)}</div>
+      <div class="coach-says">“${esc(tut.closing)}”</div>
+      <div class="coach-beat">THAT WAS THE FIRST NIGHT · NONE OF IT COUNTED</div>
+    </div>` : ''}
+    <p class="stamp">${tut
+      ? 'how the practice went'
+      : `the ledger · ${state.totalRounds} jobs · ${state.players.length} at the table`}</p>
     <h2 style="font-family:var(--mono);letter-spacing:0.16em;font-size:clamp(22px,6vw,36px);margin:8px 0 6px">
       ${esc(winner.name.toUpperCase())} WALKS
     </h2>
@@ -963,7 +1122,13 @@ function viewLedger() {
           <div class="rank">${s.rank}</div>
           <div>
             <div class="nm">${s.crew ? `<span class="crew-dot" style="background:${s.crew.colour}"></span>` : ''}${esc(s.name)}${s.bot ? ' <span style="color:var(--bone-faint);font-size:10px">GHOST</span>' : ''}</div>
-            <div class="rl">${s.role ? `${esc(s.role.name)} — ${esc(s.role.tag)}` : ''} · held ${s.stats.stands}, folded ${s.stats.folds}${s.stats.pledgesBroken ? `, broke ${s.stats.pledgesBroken} pledge${s.stats.pledgesBroken > 1 ? 's' : ''}` : ''}${s.stats.cardsPlayed ? `, played ${s.stats.cardsPlayed} card${s.stats.cardsPlayed > 1 ? 's' : ''}` : ''}</div>
+            <div class="rl">${[
+              s.role ? `${esc(s.role.name)} — ${esc(s.role.tag)}` : '',
+              `held ${s.stats.stands}, folded ${s.stats.folds}`
+                + (s.stats.middles ? `, ${s.stats.middles} somewhere in between` : '')
+                + (s.stats.pledgesBroken ? `, broke ${s.stats.pledgesBroken} pledge${s.stats.pledgesBroken > 1 ? 's' : ''}` : '')
+                + (s.stats.cardsPlayed ? `, played ${s.stats.cardsPlayed} card${s.stats.cardsPlayed > 1 ? 's' : ''}` : ''),
+            ].filter(Boolean).join(' · ')}</div>
           </div>
           <div class="amt">${money(s.score)}</div>
         </div>`).join('')}
@@ -1050,8 +1215,8 @@ function viewLedger() {
 
     <div class="rule"></div>
     ${state.isHost
-      ? `<button class="btn" data-act="rematch" style="width:100%">SAME TABLE, NEW NIGHT</button>`
-      : '<p class="waiting" style="text-align:center">Waiting on the host to call another one.</p>'}
+      ? `<button class="btn" data-act="rematch" style="width:100%">${tut ? 'NOW PLAY IT FOR REAL' : 'SAME TABLE, NEW NIGHT'}</button>`
+      : `<p class="waiting" style="text-align:center">Waiting on the host to ${tut ? 'start the real one' : 'call another one'}.</p>`}
     <p style="text-align:center;margin-top:12px"><button class="link-btn" data-act="leave">leave the table</button></p>
     ${mode === 'online' ? `<div class="rule"></div>${chatBlock()}` : ''}
   </section>`;
@@ -1163,14 +1328,14 @@ document.addEventListener('click', (ev) => {
   switch (act) {
     case 'modeDevice': {
       const name = ($('#nameInput')?.value ?? '').trim();
-      if (name) { me.name = name; localStorage.setItem('standoff.name', name); }
+      if (name) { me.name = name; rememberName(name); }
       startLocal('device').then(() => { if (me.name) send({ t: 'addLocal', name: me.name }); });
       break;
     }
     case 'modeSolo': {
       const name = ($('#nameInput')?.value ?? '').trim() || 'You';
       me.name = name;
-      localStorage.setItem('standoff.name', name);
+      rememberName(name);
       startLocal('solo');
       break;
     }
@@ -1185,6 +1350,7 @@ document.addEventListener('click', (ev) => {
     case 'toggleTimers': send({ t: 'config', timers: !state.config.timers }); break;
     case 'toggleCards': send({ t: 'config', cards: !state.config.cards }); break;
     case 'start': send({ t: 'start' }); break;
+    case 'tutorial': typed = new Set(); send({ t: 'tutorial' }); break;
     case 'skip': send({ t: 'skip' }); break;
     case 'seatTake': send({ t: 'seatTake' }); break;
     case 'seatDone': send({ t: 'seatDone' }); break;
@@ -1221,7 +1387,7 @@ document.addEventListener('click', (ev) => {
       break;
     }
     case 'leave': {
-      localStorage.removeItem('standoff.session');
+      clearSession();
       location.hash = '';
       location.reload();
       break;
@@ -1259,7 +1425,7 @@ document.addEventListener('click', (ev) => {
   const name = ($('#nameInput')?.value ?? '').trim();
   if (!name) { toast('They need something to call you.'); $('#nameInput')?.focus(); return; }
   me.name = name;
-  localStorage.setItem('standoff.name', name);
+  rememberName(name);
   mode = 'online';
   if (id === 'createBtn') send({ t: 'create', name });
   else {

@@ -66,8 +66,21 @@ export class LocalTable {
     state.chat = [];
     state.maxPlayers = 10;
 
-    // On a shared screen the reckoning belongs to the room, so hand over the
-    // per-player breakdown that an online player would only see for themselves.
+    // On a shared screen the job briefing belongs to the room: there is no
+    // "you" between turns, so hand over every job at once and let each pair
+    // read their own off the table.
+    if ((g.phase === 'deal' || g.phase === 'act') && !viewer && g.groups.length) {
+      state.briefing = g.groups.map((grp) => {
+        const any = grp.memberIds[0];
+        const seen = g.view(any);
+        const names = grp.memberIds.map((id) => g.players.get(id)?.name ?? '?');
+        // nobody is "you" on a shared screen, so the dossier names the room
+        return { id: grp.id, names, job: { ...seen.job, sharedNames: names } };
+      });
+    }
+
+    // The reckoning belongs to the room too, so hand over the per-player
+    // breakdown that an online player would only see for themselves.
     if (g.phase === 'reckoning' && state.reckoning) {
       for (const row of state.reckoning) {
         const grp = g.groups.find((x) => x.id === row.id);
@@ -133,6 +146,14 @@ export class LocalTable {
       case 'start': {
         if (this.mode === 'solo') while (g.players.size < 4) this.addBot();
         const res = g.start();
+        if (res?.error) { this.error = res.error; break; }
+        this.lastPhase = null;
+        this.syncSeats();
+        break;
+      }
+      case 'tutorial': {
+        if (this.mode === 'solo') while (g.players.size < 4) this.addBot();
+        const res = g.startTutorial();
         if (res?.error) { this.error = res.error; break; }
         this.lastPhase = null;
         this.syncSeats();

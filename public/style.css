@@ -588,3 +588,37 @@ body.loud .timer-fill { background: var(--blood-bright); }
 .reveal-row.middle { border-left: 3px solid var(--gold); }
 .reveal-verdict:not(.stand):not(.fold) { color: var(--gold); }
 .matrix td[style*="text-align:left"] { font-size: 10.5px; letter-spacing: 0.06em; }
+
+/* --- the connection, mentioned only when it needs mentioning -------------- */
+
+.link {
+  position: fixed; left: 50%; transform: translateX(-50%);
+  bottom: calc(env(safe-area-inset-bottom, 0px) + 74px);
+  z-index: 860;
+  background: var(--ink-3); border: 1px solid var(--gold); color: var(--gold);
+  font-family: var(--mono); font-size: 11px; letter-spacing: 0.16em;
+  padding: 7px 14px; border-radius: 2px; white-space: nowrap;
+  animation: rise 0.3s both;
+}
+
+/* --- somebody talking you through your first night ----------------------- */
+
+.coach {
+  border: 1px solid rgba(106, 143, 232, 0.4);
+  border-left: 3px solid #6a8fe8;
+  background: linear-gradient(180deg, rgba(106, 143, 232, 0.09), transparent 70%), var(--ink-2);
+  padding: 14px 16px;
+  margin-bottom: 18px;
+  animation: rise 0.4s both;
+}
+.coach-who {
+  font-family: var(--mono); font-size: 10px; letter-spacing: 0.24em;
+  color: #8fb0f0; text-transform: uppercase;
+}
+.coach-says { font-size: 16.5px; line-height: 1.6; margin: 8px 0 6px; color: #e7e2d7; }
+.coach-beat {
+  font-family: var(--mono); font-size: 9.5px; letter-spacing: 0.22em;
+  color: var(--bone-faint); text-transform: uppercase;
+}
+.btn.tutorial-btn { background: #6a8fe8; border-color: #6a8fe8; color: #0b0b0d; }
+.btn.tutorial-btn:hover { background: #8fb0f0; border-color: #8fb0f0; }
