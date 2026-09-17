@@ -12,6 +12,11 @@ const chrome = $('#chrome');
 let ws = null;
 let local = null;
 let mode = null;                     // 'online' | 'device' | 'solo'
+let peer = null;                     // a PeerHost or PeerGuest, when there is no server
+let signalUrl = null;                // where browsers get introduced to each other
+
+const isPeer = () => !!peer;
+const isOnline = () => mode === 'online';
 let socketReady = false;
 let state = null;
 /**
@@ -128,6 +133,7 @@ const outbox = [];
 const NEVER_QUEUE = new Set(['ping', 'create', 'join', 'resume']);
 
 function send(obj) {
+  if (peer) { try { peer.send(obj); } catch { /* the channel will report itself */ } return; }
   if (mode === 'online') {
     if (ws && ws.readyState === WebSocket.OPEN) {
       try { ws.send(JSON.stringify(obj)); return; } catch { /* fall through to the outbox */ }
@@ -254,34 +260,7 @@ function connect() {
   ws.onmessage = (ev) => {
     let msg;
     try { msg = JSON.parse(ev.data); } catch { return; }
-    if (msg.t === 'pong') return;
-    if (msg.t === 'welcome') {
-      mode = 'online';
-      me.playerId = msg.playerId;
-      me.token = msg.token;
-      me.code = msg.code;
-      writeSession({ code: msg.code, token: msg.token });
-      try { history.replaceState(null, '', roomUrl(msg.code)); } catch { /* not allowed here */ }
-      lastSeq = -1;
-    } else if (msg.t === 'state') {
-      if (mode !== 'online') return;
-      // frames can arrive out of order after a reconnect; only move forwards
-      if (typeof msg.state?.seq === 'number') {
-        if (msg.state.seq < lastSeq) return;
-        lastSeq = msg.state.seq;
-      }
-      applyState(msg.state);
-    } else if (msg.t === 'error') {
-      // a table that no longer exists is worth forgetting, or every reload
-      // tries to rejoin a game that ended days ago
-      if (msg.reset || /no table/i.test(msg.msg)) {
-        clearSession();
-        // the socket is up and the link still names a room, so this lands them
-        // back on the one-tap door rather than on a stale screen
-        if (!state) { mode = null; render(); }
-      }
-      toast(msg.msg);
-    }
+    handleFrame(msg);
   };
 
   ws.onclose = () => {
@@ -291,6 +270,42 @@ function connect() {
     else { setLink('idle'); if (!mode) render(); }
   };
   ws.onerror = () => { try { ws.close(); } catch { /* ignore */ } };
+}
+
+/**
+ * One frame from the table, however it arrived — a websocket to a Node host, or
+ * a data channel to whoever's browser is running the game. The protocol is the
+ * same either way, which is the whole reason peer play was cheap to add.
+ */
+function handleFrame(msg) {
+  if (!msg || msg.t === 'pong') return;
+  if (msg.t === 'welcome') {
+    if (!mode) mode = 'online';
+    me.playerId = msg.playerId;
+    me.token = msg.token;
+    me.code = msg.code;
+    writeSession({ code: msg.code, token: msg.token, peer: isPeer() || undefined });
+    try { history.replaceState(null, '', roomUrl(msg.code)); } catch { /* not allowed here */ }
+    lastSeq = -1;
+  } else if (msg.t === 'state') {
+    if (!isOnline()) return;
+    // frames can arrive out of order after a reconnect; only move forwards
+    if (typeof msg.state?.seq === 'number') {
+      if (msg.state.seq < lastSeq) return;
+      lastSeq = msg.state.seq;
+    }
+    applyState(msg.state);
+  } else if (msg.t === 'error') {
+    // a table that no longer exists is worth forgetting, or every reload
+    // tries to rejoin a game that ended days ago
+    if (msg.reset || /no table/i.test(msg.msg)) {
+      clearSession();
+      // the link still names a room, so this lands them back on the one-tap
+      // door rather than on a stale screen
+      if (!state) { mode = null; peer = null; render(); }
+    }
+    toast(msg.msg);
+  }
 }
 
 /**
@@ -323,6 +338,61 @@ document.addEventListener('visibilitychange', () => {
 window.addEventListener('online', () => {
   if (mode === 'online' && (!ws || ws.readyState > WebSocket.OPEN)) { link.attempts = 0; connect(); }
 });
+
+/**
+ * Host a table out of this tab. Used when there is no server to host one —
+ * which on GitHub Pages is always. The game runs here; everybody else's phone
+ * talks to this browser directly.
+ */
+async function startPeerHost(name) {
+  const { PeerHost } = await import('./net/peer.js');
+  mode = 'online';
+  const host = new PeerHost({
+    signalUrl,
+    onState: (msg) => handleFrame(msg),
+    onError: (m) => toast(m),
+  });
+  peer = host;
+  setLink('connecting');
+  try {
+    await host.start(name);
+    setLink('open');
+  } catch (err) {
+    peer = null;
+    mode = null;
+    setLink('idle');
+    toast('Could not open a table: ' + (err?.message ?? 'no introduction service'));
+    render();
+  }
+}
+
+/** Join a table that lives in somebody else's browser. */
+async function startPeerGuest(code, name) {
+  const { PeerGuest } = await import('./net/peer.js');
+  const guest = new PeerGuest({
+    signalUrl,
+    code,
+    onState: (msg) => handleFrame(msg),
+    onError: (m, reset) => {
+      toast(m);
+      if (reset) { clearSession(); peer = null; mode = null; render(); }
+    },
+  });
+  peer = guest;
+  mode = 'online';
+  setLink('connecting');
+  try {
+    await guest.start();
+    setLink('open');
+    guest.send({ t: 'join', code, name });
+  } catch (err) {
+    peer = null;
+    mode = null;
+    setLink('idle');
+    toast(err?.message ?? 'could not reach that table');
+    render();
+  }
+}
 
 async function startLocal(kind) {
   const { LocalTable } = await import('./net/local.js');

@@ -11,7 +11,8 @@ import path from 'node:path';
 import os from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { attach } from './src/net/wss.js';
-import { Rooms, handleMessage } from './src/room.js';
+import { Rooms, handleMessage } from './public/net/room.js';
+import { Broker } from './src/broker.js';
 import { Store, fallbackDir } from './src/persist.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -93,6 +94,7 @@ const server = http.createServer((req, res) => {
         // address that other machines can actually reach.
         lan: addresses(),
         port: PORT,
+        signal: true,          // this host will also introduce browser peers
       }));
       return;
     }
@@ -111,9 +113,19 @@ server.on('clientError', (err, socket) => {
   if (socket.writable) socket.end('HTTP/1.1 400 Bad Request\r\n\r\n');
 });
 
-attach(server, (socket) => {
+// Two jobs on one socket, told apart by the path the client connected to.
+// `/signal` is the WebRTC introduction service for tables hosted on a browser
+// tab (GitHub Pages); everything else is a player talking to a table here.
+const broker = new Broker();
+setInterval(() => broker.sweep(), 5 * 60 * 1000).unref?.();
+
+attach(server, (socket, req) => {
+  const signalling = String(req?.url ?? '').startsWith('/signal');
+  socket.data = socket.data ?? {};
+
   socket.on('message', (raw) => {
     try {
+      if (signalling) { broker.handle(socket, raw); return; }
       handleMessage(rooms, socket, raw);
     } catch (err) {
       console.error('[standoff] message failed:', err);
@@ -122,6 +134,7 @@ attach(server, (socket) => {
   });
   socket.on('close', () => {
     try {
+      if (signalling) { broker.drop(socket); return; }
       const { room, playerId } = socket.data;
       if (room && playerId) {
         room.detach(playerId, socket);

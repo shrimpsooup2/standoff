@@ -1,15 +1,17 @@
 # Publishes the client to GitHub Pages.
 #
 # The game engine is plain ES modules living under public/, so the whole thing
-# runs in the browser with no server: ONE DEVICE (pass-and-play) and AGAINST THE
-# GHOSTS work on Pages exactly as they do locally. The websocket mode needs
-# `node server.js`, and the client hides it when nobody answers.
+# runs in the browser with no server: ONE DEVICE (pass-and-play), AGAINST THE
+# GHOSTS and browser-hosted multiplayer all work on Pages.
+#
+# This deploys whatever the repository's default branch is, whatever it is
+# called — hard-coding "main" means the workflow silently never runs on a repo
+# whose default branch is called something else.
 
 name: Deploy to GitHub Pages
 
 on:
   push:
-    branches: [main]
   workflow_dispatch:
 
 permissions:
@@ -33,6 +35,7 @@ jobs:
 
   deploy:
     needs: test
+    if: github.ref_name == github.event.repository.default_branch
     runs-on: ubuntu-latest
     environment:
       name: github-pages

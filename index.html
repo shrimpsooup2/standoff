@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>STANDOFF</title>
+<!--
+  The game lives in public/. This page only matters when GitHub Pages is set to
+  "Deploy from a branch", which serves the repository root: without it you get
+  the README rendered as a web page instead of the game. With Pages set to
+  "GitHub Actions" the workflow publishes public/ as the site root and nobody
+  ever sees this file.
+-->
+<meta http-equiv="refresh" content="0; url=./public/" />
+<link rel="canonical" href="./public/" />
+<style>
+  html, body { height: 100%; margin: 0; background: #164031; color: #f2e8d5;
+    font-family: 'Iowan Old Style', Palatino, Georgia, serif; }
+  main { display: grid; place-content: center; gap: 14px; height: 100%; text-align: center; padding: 24px; }
+  a { color: #c08c1e; }
+</style>
+</head>
+<body>
+  <main>
+    <p>Taking you to the table&hellip;</p>
+    <p><a href="./public/">STANDOFF</a></p>
+  </main>
+  <script>location.replace('./public/');</script>
+</body>
+</html>

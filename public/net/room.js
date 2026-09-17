@@ -1,7 +1,21 @@
-import { randomBytes, randomUUID } from 'node:crypto';
-import { Game, serializeGame, deserializeGame } from '../public/game/engine.js';
-import { BOT_NAMES, STRATEGIES } from '../public/game/bots.js';
-import { makeRng, roomCode } from '../public/game/rng.js';
+// The table itself: seats, tokens, host migration, and the one function that
+// turns an inbound message into a change.
+//
+// This runs in two places and must behave identically in both: on the Node host
+// that `node server.js` starts, and inside the browser tab of whoever created a
+// table on GitHub Pages, where the peers talk to it over WebRTC instead of a
+// websocket. That is why there is no Node in here — `crypto` is the Web Crypto
+// API, which Node has had for years, and a "socket" is anything with a send().
+
+import { Game, serializeGame, deserializeGame } from '../game/engine.js';
+import { BOT_NAMES, STRATEGIES } from '../game/bots.js';
+import { makeRng, roomCode } from '../game/rng.js';
+
+const randomUUID = () => crypto.randomUUID();
+const randomBytes = (n) => ({
+  toString: () => [...crypto.getRandomValues(new Uint8Array(n))]
+    .map((b) => b.toString(16).padStart(2, '0')).join(''),
+});
 
 const ROOM_TTL_MS = 24 * 60 * 60 * 1000;   // a table lives a day, then the lights go off
 const EMPTY_TTL_MS = 6 * 60 * 60 * 1000;   // and six hours after the last person leaves
