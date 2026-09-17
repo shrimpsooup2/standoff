@@ -601,7 +601,7 @@ export const PAIR_SCENARIOS = [
   },
   {
     id: 'priest',
-    title: 'Saturdays At {time}',
+    title: 'Saturdays, {time}',
     setup: [
       'Father Dominic hears confession on Saturdays. Since April, Father Dominic’s confessional has also contained a device that is not part of the sacrament, installed by people who did not ask Father Dominic.',
       '{A} confessed. {B} drove {A} there and waited outside with the engine running, which is, canonically and legally, its own kind of confession.',

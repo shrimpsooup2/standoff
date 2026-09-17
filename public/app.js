@@ -27,7 +27,8 @@ let phaseStart = Date.now();
 let lastPhaseKey = '';
 let typed = new Set();
 let reconnectDelay = 500;
-let pendingCard = null;              // a card waiting on a target
+let pendingCard = null;          // a card waiting on a target
+let handUp = false;              // is the fan along the bottom edge pulled out?
 
 /* ------------------------------------------------------------------ utils */
 
@@ -354,11 +355,11 @@ function renderRail() {
     if (state.phase === 'accusation' && p.accused) dot = 'locked';
     const sittingOut = state.sittingOut?.id === p.id;
     return `<div class="${cls.join(' ')}">
-      <div class="n"><span class="dot ${dot}"></span>${crewDot(p)}${esc(p.name)}${p.bot ? ' <span style="color:var(--bone-faint)">○</span>' : ''}</div>
+      <div class="n"><span class="dot ${dot}"></span>${crewDot(p)}${esc(p.name)}${p.bot ? ' <span style="color:var(--ink-faint)">○</span>' : ''}</div>
       <div class="s">${money(p.score)}
         ${p.markers ? `<span class="marks">${'†'.repeat(Math.min(p.markers, 4))}</span>` : ''}
-        ${p.handCount ? `<span style="color:var(--bone-faint)">■${p.handCount}</span>` : ''}
-        ${sittingOut ? '<span style="color:var(--bone-faint)">OUT</span>' : ''}
+        ${p.handCount ? `<span style="color:var(--ink-faint)">■${p.handCount}</span>` : ''}
+        ${sittingOut ? '<span style="color:var(--ink-faint)">OUT</span>' : ''}
         ${p.played ? '<span style="color:var(--gold)">◆</span>' : ''}
       </div>
     </div>`;
@@ -400,12 +401,12 @@ function viewDoor() {
 
     <div class="rule" style="max-width:340px;margin:30px auto"></div>
     <p class="stamp">how it works</p>
-    <p style="max-width:44ch;margin:10px auto;color:var(--bone-dim);font-size:15px">
+    <p style="max-width:44ch;margin:10px auto;color:var(--ink-soft);font-size:15px">
       Every round you are locked in a room with somebody you know. You can talk first, play a card,
       and swear to anything you like. Then you choose, alone, whether to hold the line or take the deal.
       Holding together pays. Folding on somebody who held pays better. Everybody folding pays nobody.
     </p>
-    <p style="max-width:44ch;margin:10px auto;color:var(--bone-faint);font-size:14px;font-style:italic">
+    <p style="max-width:44ch;margin:10px auto;color:var(--ink-faint);font-size:14px;font-style:italic">
       Three to ten people, in the same room or on the same call, where you can hear the pause before somebody lies.
     </p>
   </section>`;
@@ -428,7 +429,7 @@ function viewLobby() {
     ` : `
       <p class="stamp">say these four letters out loud</p>
       <div class="code-big">${esc(state.code)}</div>
-      <p style="color:var(--bone-dim);font-size:14px">
+      <p style="color:var(--ink-soft);font-size:14px">
         Anybody on this wifi opens this page and types it in. ${roster.length}/${state.maxPlayers} seated.
       </p>`}
 
@@ -444,7 +445,7 @@ function viewLobby() {
       ${roster.map((p) => `
         <div class="roster-row">
           <div>
-            <div class="who">${esc(p.name)}${p.isYou && !isLocal ? ' <span style="color:var(--gold);font-size:10px">— YOU</span>' : ''}${p.id === state.hostId && !isLocal ? ' <span style="color:var(--bone-faint);font-size:10px">— HOST</span>' : ''}</div>
+            <div class="who">${esc(p.name)}${p.isYou && !isLocal ? ' <span style="color:var(--gold);font-size:10px">— YOU</span>' : ''}${p.id === state.hostId && !isLocal ? ' <span style="color:var(--ink-faint);font-size:10px">— HOST</span>' : ''}</div>
             ${p.bot ? `<div class="what">a ghost. ${esc(strategyLine(p.strategy))}</div>`
               : `<div class="what">${isLocal ? 'at the table' : p.connected ? 'in the room' : 'stepped out'}</div>`}
           </div>
@@ -459,7 +460,7 @@ function viewLobby() {
         <div class="pb">${esc(profile.blurb)}</div>
         <ul>${profile.features.map((f) => `<li>${esc(f)}</li>`).join('')}</ul>
       </div>
-      <p style="color:var(--bone-faint);font-size:13px;margin-top:-6px">
+      <p style="color:var(--ink-faint);font-size:13px;margin-top:-6px">
         The night changes shape as people arrive. Seat somebody else and this box changes with it.
       </p>` : `
       <p class="waiting" style="text-align:center;padding:10px">
@@ -490,14 +491,14 @@ function viewLobby() {
       <button class="btn tutorial-btn" data-act="tutorial" ${roster.length < 2 && mode !== 'solo' ? 'disabled' : ''} style="width:100%;margin-bottom:10px">
         FIRST NIGHT \u00b7 LEARN IT IN FIVE MINUTES
       </button>
-      <p style="color:var(--bone-faint);font-size:13px;text-align:center;margin:-4px 0 12px">
+      <p style="color:var(--ink-faint);font-size:13px;text-align:center;margin:-4px 0 12px">
         Three short jobs with somebody talking you through them. A real game, and none of it counts.
       </p>
       <button class="btn" data-act="start" ${roster.length < 2 && mode !== 'solo' ? 'disabled' : ''} style="width:100%">
         ${roster.length < 2 && mode !== 'solo' ? 'WAITING FOR SOMEBODY TO BETRAY'
           : `DEAL IN · ${mode === 'solo' ? 'YOU AND THREE GHOSTS' : `${roster.length} PLAYERS`} · ${state.config.rounds} ROUNDS`}
       </button>
-      <p style="color:var(--bone-faint);font-size:13px;text-align:center;margin-top:10px">
+      <p style="color:var(--ink-faint);font-size:13px;text-align:center;margin-top:10px">
         Ghosts are stand-ins with fixed habits. Good for odd numbers and for finding out how you play.
       </p>
     ` : `<p class="waiting" style="text-align:center;padding:14px">Waiting on ${esc(state.players.find((p) => p.id === state.hostId)?.name ?? 'the host')} to deal.</p>`}
@@ -554,7 +555,7 @@ function viewPass() {
     <div class="pn">${esc(state.local.seatName ?? '')}</div>
     <div class="pb">Nobody else should be looking at this screen. Take it, do your business, and pass it on.</div>
     <button class="btn" data-act="seatTake">I’M ${esc((state.local.seatName ?? '').toUpperCase())}</button>
-    <p style="color:var(--bone-faint);font-size:12px;font-family:var(--mono);letter-spacing:0.2em;margin-top:22px">
+    <p style="color:var(--ink-faint);font-size:12px;font-family:var(--mono);letter-spacing:0.2em;margin-top:22px">
       ${state.local.seatIndex + 1} OF ${state.local.seatCount}
     </p>
   </section>`;
@@ -616,15 +617,18 @@ function viewDeal() {
   <section>
     ${coachPanel()}
     ${actionStrip()}
-    ${heatNote()}
     ${twistBanner()}
-    ${jobCard(job)}
-    <div class="rule"></div>
-    ${payoffPanel(job)}
-    <p class="waiting" style="text-align:center;margin-top:18px">
-      ${state.twist?.id === 'notalk' ? 'No talking on this one. The squeeze comes straight away.' : 'Table talk in a moment. Think about what you are going to say.'}
-    </p>
-    ${state.isHost ? `<div class="row" style="justify-content:center;margin-top:12px"><button class="ghost-btn" data-act="skip">SKIP AHEAD</button></div>` : ''}
+    <div class="tableau">
+      <div class="tab-main">${jobCard(job)}</div>
+      <div class="tab-side">
+        ${heatNote()}
+        ${payoffPanel(job)}
+        <p class="waiting" style="margin-top:16px">
+          ${state.twist?.id === 'notalk' ? 'No talking on this one. The squeeze comes straight away.' : 'Table talk in a moment. Think about what you are going to say.'}
+        </p>
+        ${state.isHost ? `<div class="row" style="margin-top:12px"><button class="ghost-btn" data-act="skip">SKIP AHEAD</button></div>` : ''}
+      </div>
+    </div>
   </section>`;
 }
 
@@ -635,14 +639,13 @@ function viewBriefing() {
   <section>
     ${coachPanel()}
     ${actionStrip()}
-    ${heatNote()}
     ${twistBanner()}
     ${many ? `<p class="stamp" style="margin-bottom:12px">${state.briefing.length} rooms tonight \u00b7 find yours</p>` : ''}
     ${state.briefing.map((b) => `
-      ${many ? `<p class="stamp" style="margin:22px 0 8px;color:var(--gold)">${esc(b.names.join(' &amp; '))}</p>` : ''}
-      ${jobCard(b.job)}
-      <div class="rule"></div>
-      ${payoffPanel(b.job)}
+      <div class="tableau">
+        <div class="tab-main">${jobCard(b.job)}</div>
+        <div class="tab-side">${heatNote()}${payoffPanel(b.job)}</div>
+      </div>
     `).join('')}
     <p class="waiting" style="text-align:center;margin-top:18px">
       Read it together. Nobody chooses anything yet.
@@ -692,7 +695,7 @@ function actionStrip() {
 function heatNote() {
   if (!state.heat || state.heat.key === 'quiet') return '';
   return `<p class="stamp" style="margin-bottom:10px">
-    the table is <b style="color:${state.heat.key === 'warm' ? 'var(--gold)' : 'var(--blood-bright)'}">${esc(state.heat.name)}</b> · ${esc(state.heat.line)}
+    the table is <b style="color:${state.heat.key === 'warm' ? 'var(--gold)' : 'var(--red-bright)'}">${esc(state.heat.name)}</b> · ${esc(state.heat.line)}
   </p>`;
 }
 
@@ -707,12 +710,12 @@ function payoffPanel(job) {
       <tr><th style="text-align:left">the move</th><th>if ${room}</th><th>if ${bust}</th></tr>
       ${job.options.map((o) => `
         <tr>
-          <td style="text-align:left;color:var(--bone)">${esc(o.label)}</td>
+          <td style="text-align:left;color:var(--ink)">${esc(o.label)}</td>
           <td class="${o.ifTheyHold >= o.ifTheyDont ? 'good' : ''}"><b>${money(o.ifTheyHold)}</b></td>
           <td class="${o.ifTheyDont > o.ifTheyHold ? 'good' : 'bad'}"><b>${money(o.ifTheyDont)}</b></td>
         </tr>`).join('')}
     </table>
-    <p style="color:var(--bone-faint);font-size:13px;margin-top:8px">
+    <p style="color:var(--ink-faint);font-size:13px;margin-top:8px">
       Nothing here is safe and nothing here is the decent thing. What is worth doing depends
       entirely on what you think everybody else is about to do.
     </p>`;
@@ -724,7 +727,7 @@ function handPanel() {
   const you = state.you;
   if (!you || !state.config.cards) return '';
   if (you.playedThisRound) {
-    return `<div class="hand-wrap">
+    return `<div class="hand-wrap open">
       <p class="stamp">you played</p>
       <div class="pcard ${you.playedThisRound.face} played" style="margin-top:8px">
         <span class="pc-face">${you.playedThisRound.face === 'up' ? 'FACE UP · ANNOUNCED' : 'FACE DOWN · SECRET'}</span>
@@ -739,7 +742,7 @@ function handPanel() {
     const card = you.hand.find((c) => c.id === pendingCard);
     if (card) {
       const targets = state.players.filter((p) => !p.isYou);
-      return `<div class="hand-wrap">
+      return `<div class="hand-wrap open">
         <p class="stamp">${esc(card.name)} — on who?</p>
         <div class="row tight" style="margin-top:8px">
           ${targets.map((p) => `<button class="ghost-btn" data-act="playCard" data-card="${card.id}" data-target="${p.id}">${esc(p.name)}</button>`).join('')}
@@ -749,8 +752,10 @@ function handPanel() {
     }
   }
 
-  return `<div class="hand-wrap">
-    <p class="stamp">your hand · one card a round</p>
+  return `<div class="hand-wrap${handUp ? ' open' : ''}">
+    <button class="hand-tab" data-act="hand" aria-expanded="${handUp}">
+      your hand · ${you.hand.length} card${you.hand.length === 1 ? '' : 's'} · one a round
+    </button>
     <div class="hand">
       ${you.hand.map((c) => `
         <button class="pcard ${c.face}" data-act="pickCard" data-card="${c.id}">
@@ -759,9 +764,6 @@ function handPanel() {
           <span class="pc-text">${esc(c.text)}</span>
         </button>`).join('')}
     </div>
-    <p style="color:var(--bone-faint);font-size:12.5px;margin-top:2px">
-      Face-up cards are announced to the people you are working with. Face-down ones stay yours until the reckoning.
-    </p>
   </div>`;
 }
 
@@ -783,52 +785,58 @@ function viewTalk() {
   const pledged = job.pledgedByYou;
   const openBook = state.twist?.id === 'openbook';
 
-  return `
-  <section>
-    ${coachPanel()}
-    ${twistBanner()}
-    ${declaredPanel()}
+  // What they said to you on the left; what you are willing to promise on the right.
+  const said = `
     <p class="stamp">you have a minute with ${esc(partners)}</p>
-    <h2 style="font-family:var(--mono);letter-spacing:0.1em;font-size:19px;margin:6px 0 16px">${esc(job.title)}</h2>
+    <h2 class="talk-title">${esc(job.title)}</h2>
+    ${declaredPanel()}
 
     ${job.incoming.length ? job.incoming.map((w) => `
       <div class="whisper-in">
         <div class="from">${esc(w.from)} says</div>
-        <div class="body">“${esc(w.text)}”</div>
+        <div class="body">\u201c${esc(w.text)}\u201d</div>
       </div>`).join('') : '<p class="waiting">Nothing back yet. They are thinking about it, or they want you to think they are.</p>'}
 
     <div class="rule"></div>
     <p class="stamp">what you tell ${esc(partners)}</p>
     <textarea id="whisperBox" maxlength="180" placeholder="Say whatever you need to say.">${esc(draft || job.whisperByYou)}</textarea>
     <div class="row spread" style="margin-top:8px">
-      <span style="font-size:12px;color:var(--bone-faint);font-family:var(--mono)">THEY SEE THIS IMMEDIATELY</span>
+      <span style="font-size:12px;color:var(--ink-faint);font-family:var(--mono)">THEY SEE THIS IMMEDIATELY</span>
       <button class="ghost-btn" data-act="whisper">SEND IT</button>
-    </div>
+    </div>`;
 
+  const offers = `
     <div class="pledge-box ${pledged ? 'on' : ''}">
       <div class="row spread">
         <div>
-          <div style="font-family:var(--mono);font-size:12px;letter-spacing:0.18em;color:${pledged ? 'var(--gold)' : 'var(--bone-dim)'}">
+          <div style="font-family:var(--mono);font-size:12px;letter-spacing:0.18em;color:${pledged ? 'var(--gold)' : 'var(--ink-soft)'}">
             ${pledged ? 'YOU HAVE GIVEN YOUR WORD' : 'GIVE YOUR WORD'}
           </div>
-          <div style="font-size:14px;color:var(--bone-dim);margin-top:4px">
+          <div style="font-size:14px;color:var(--ink-soft);margin-top:4px">
             A pledge is public to ${esc(partners)}. Breaking one goes in the record with your name on it.
           </div>
         </div>
         <button class="ghost-btn ${pledged ? 'on' : ''}" data-act="pledge" data-val="${pledged ? '0' : '1'}">${pledged ? 'TAKE IT BACK' : 'I SWEAR IT'}</button>
       </div>
-      ${job.pledgesVisible.length ? `<div style="margin-top:10px;font-family:var(--mono);font-size:11px;color:var(--bone-faint);letter-spacing:0.1em">
-        ${openBook ? 'OPEN BOOK — THE WHOLE TABLE: ' : ''}${job.pledgesVisible.map((p) => `${esc(p.name)}: ${p.pledged ? '<span style="color:var(--gold)">SWORE IT</span>' : 'said nothing'}`).join(' · ')}
+      ${job.pledgesVisible.length ? `<div style="margin-top:10px;font-family:var(--mono);font-size:11px;color:var(--ink-faint);letter-spacing:0.1em">
+        ${openBook ? 'OPEN BOOK \u2014 THE WHOLE TABLE: ' : ''}${job.pledgesVisible.map((p) => `${esc(p.name)}: ${p.pledged ? '<span style="color:var(--gold)">SWORE IT</span>' : 'said nothing'}`).join(' \u00b7 ')}
       </div>` : ''}
     </div>
-
-    ${handPanel()}
     ${markerPanel()}
-    ${powerPanel()}
+    ${powerPanel()}`;
 
+  return `
+  <section>
+    ${coachPanel()}
+    ${twistBanner()}
+    <div class="tableau">
+      <div class="tab-main">${said}</div>
+      <div class="tab-side">${offers}</div>
+    </div>
+    ${handPanel()}
     <div class="row" style="justify-content:center;margin-top:18px">
-      ${state.local ? `<button class="btn" data-act="seatDone">DONE — PASS IT ON</button>`
-        : state.isHost ? `<button class="ghost-btn" data-act="skip">EVERYBODY’S SAID ENOUGH</button>` : ''}
+      ${state.local ? `<button class="btn" data-act="seatDone">DONE \u2014 PASS IT ON</button>`
+        : state.isHost ? `<button class="ghost-btn" data-act="skip">EVERYBODY\u2019S SAID ENOUGH</button>` : ''}
     </div>
   </section>`;
 }
@@ -837,19 +845,19 @@ function markerPanel() {
   const you = state.you;
   if (!you) return '';
   if (you.markerTarget) {
-    return `<div class="pledge-box on" style="border-color:var(--blood)">
-      <div style="font-family:var(--mono);font-size:12px;letter-spacing:0.18em;color:var(--blood-bright)">MARKER CALLED IN</div>
-      <div style="font-size:14px;color:var(--bone-dim);margin-top:4px">If they fold on you this round, they forfeit the whole take and you collect half of it.</div>
+    return `<div class="pledge-box on" style="border-color:var(--red)">
+      <div style="font-family:var(--mono);font-size:12px;letter-spacing:0.18em;color:var(--red-bright)">MARKER CALLED IN</div>
+      <div style="font-size:14px;color:var(--ink-soft);margin-top:4px">If they fold on you this round, they forfeit the whole take and you collect half of it.</div>
     </div>`;
   }
   if (!you.markers) return '';
   return `<div class="pledge-box" style="border-color:rgba(181,35,43,0.4)">
     <div class="row spread">
       <div>
-        <div style="font-family:var(--mono);font-size:12px;letter-spacing:0.18em;color:var(--blood-bright)">
+        <div style="font-family:var(--mono);font-size:12px;letter-spacing:0.18em;color:var(--red-bright)">
           YOU ARE HOLDING ${you.markers} MARKER${you.markers > 1 ? 'S' : ''}
         </div>
-        <div style="font-size:14px;color:var(--bone-dim);margin-top:4px">
+        <div style="font-size:14px;color:var(--ink-soft);margin-top:4px">
           Earned by being left out there. Call one in and a betrayal this round costs them everything they made on it.
         </div>
       </div>
@@ -893,14 +901,14 @@ function viewSqueeze() {
   if (!job) return sittingOutNote();
   const chosen = job.yourChoice;
 
-  return `
-  <section>
-    ${coachPanel()}
-    ${actionStrip()}
+  // Everything you know, on the left. Everything you can do, on the right.
+  const brief = `
     ${job.switched ? `<div class="twist-banner"><div class="tw-name">SWITCHED</div><div class="tw-body">Assignments were re-cut after the meeting. You are not locked in with the person you were talking to. You are locked in with <b>${esc(job.partners.map((p) => p.name).join(' and '))}</b>, and this is a different job entirely.</div></div>` : ''}
     ${job.switched ? jobCard(job) : `
-      <p class="stamp">${esc(job.title)} · no. ${esc(job.caseNo)}</p>
-      <div class="pressure" style="margin:10px 0 18px">${esc(job.pressure)}</div>`}
+      <div class="note-paper">
+        <p class="stamp">${esc(job.title)} \u00b7 no. ${esc(job.caseNo)}</p>
+        <div class="pressure" style="margin-top:10px">${esc(job.pressure)}</div>
+      </div>`}
 
     ${declaredPanel()}
 
@@ -909,26 +917,23 @@ function viewSqueeze() {
       <div class="tw-body">${job.lookout.map((l) => `${esc(l.name)} has locked in <b>${esc(l.label)}</b>`).join('. ')}.</div>
     </div>` : ''}
 
-    ${job.leak ? `<div class="twist-banner" style="border-color:var(--blood)">
-      <div class="tw-name" style="color:var(--blood-bright)">THE WIRE</div>
-      <div class="tw-body">A little bird says ${esc(job.leak.from)} has already locked in <b>${esc(job.leak.label ?? '')}</b>. Believe it or don’t.</div>
+    ${job.leak ? `<div class="twist-banner" style="border-color:var(--red)">
+      <div class="tw-name" style="color:var(--red-bright)">THE WIRE</div>
+      <div class="tw-body">A little bird says ${esc(job.leak.from)} has already locked in <b>${esc(job.leak.label ?? '')}</b>. Believe it or don\u2019t.</div>
     </div>` : ''}
 
     ${job.incoming.length ? `<div class="whisper-in">
       <div class="from">${esc(job.incoming[0].from)} said, before all this</div>
-      <div class="body">“${esc(job.incoming[0].text)}”</div>
-    </div>` : ''}
+      <div class="body">\u201c${esc(job.incoming[0].text)}\u201d</div>
+    </div>` : ''}`;
 
-    ${chosen ? `
-      <div class="big-note" style="padding:26px 0">
-        <div class="stamp" style="margin-bottom:10px">you locked in</div>
-        <div style="font-family:var(--mono);font-size:22px;letter-spacing:0.14em;color:var(--gold)">
-          ${esc(job.options.find((o) => o.id === chosen)?.label ?? '')}
-        </div>
-        <div style="margin-top:14px;color:var(--bone-faint)">
-          ${job.lockedCount} of ${job.groupSize} have decided. Nobody can change their mind now.
-        </div>
+  const moves = chosen ? `
+      <div class="locked-in">
+        <div class="stamp">you locked in</div>
+        <div class="li-name">${esc(job.options.find((o) => o.id === chosen)?.label ?? '')}</div>
+        <div class="li-note">${job.lockedCount} of ${job.groupSize} have decided. Nobody can change their mind now.</div>
       </div>` : `
+      <p class="stamp">your move \u00b7 one of ${job.options.length}</p>
       <div class="choices n${job.options.length}">
         ${job.options.map((o, i) => {
           const first = i === 0;
@@ -944,49 +949,97 @@ function viewSqueeze() {
         </button>`;
         }).join('')}
       </div>
-      ${handPanel()}
-      ${markerPanel()}`}
+      ${markerPanel()}`;
+
+  return `
+  <section>
+    ${coachPanel()}
+    ${actionStrip()}
+    <div class="tableau">
+      <div class="tab-main">${brief}</div>
+      <div class="tab-side">${moves}</div>
+    </div>
+    ${chosen ? '' : handPanel()}
     ${state.you?.roundNote ? `<p class="waiting" style="text-align:center;margin-top:14px">${esc(state.you.roundNote)}</p>` : ''}
   </section>`;
 }
 
 /* -------------------------------------------------------------- reckoning */
 
+/** The one-line verdict stamped across your job, read off the moves. */
+function verdictOf(g) {
+  const known = g.members.filter((m) => m.move != null);
+  if (!known.length) return 'THE LIGHTS WERE OUT';
+  const sold = known.filter((m) => m.sold);
+  const held = known.filter((m) => m.held);
+  if (!sold.length && held.length === known.length) return 'EVERYBODY HELD';
+  if (sold.length === known.length) return 'EVERYBODY FOLDED';
+  if (sold.length > 1) return 'IT WENT SEVERAL WAYS';
+  if (sold.length === 1) return `${sold[0].name.toUpperCase()} FOLDED`;
+  return 'NOBODY QUITE HELD';
+}
+
 function viewReckoning() {
   const rows = state.reckoning ?? [];
   const mine = rows.find((g) => g.yours);
   const others = rows.filter((g) => !g.yours);
+  const youId = state.players.find((p) => p.isYou)?.id;
 
-  const groupBlock = (g, isMine) => `
-    <article class="dossier ${g.tone === 'action' ? 'action' : ''}" data-case="${isMine ? 'YOUR JOB' : 'ELSEWHERE'}" style="margin-bottom:16px;${g.tone === 'action' ? '' : `border-left-color:${isMine ? 'var(--blood)' : 'var(--edge)'}`}">
-      <h2 style="font-size:17px">${esc(g.title)}</h2>
-      <div class="reveal">
-        ${g.members.map((m) => `
-          <div class="reveal-row ${m.move == null ? 'unknown' : m.held ? 'stand' : m.sold ? 'fold' : 'middle'}">
-            <div>
-              <div class="reveal-name">${esc(m.name)}${m.brokePledge ? '<span class="tag broken">BROKE A PLEDGE</span>' : m.pledged ? '<span class="tag kept">KEPT HIS WORD</span>' : ''}${m.wentQuiet ? '<span class="tag quiet">SAID NOTHING</span>' : ''}${m.card ? `<span class="tag" style="color:var(--gold)">${esc(m.card.name.toUpperCase())}</span>` : ''}</div>
-              <div class="reveal-verdict ${m.held ? 'stand' : m.sold ? 'fold' : ''}">${m.move ? esc(m.move) : 'YOU WERE NOT TOLD'}</div>
-            </div>
-            <div class="reveal-amount ${m.total == null ? '' : m.total >= 0 ? 'pos' : 'neg'}">${m.total == null ? '—' : money(m.total)}</div>
-          </div>`).join('')}
-      </div>
+  const revealRows = (g) => `
+    <div class="reveal">
+      ${g.members.map((m, i) => `
+        <div class="reveal-row ${m.move == null ? 'unknown' : m.held ? 'stand' : m.sold ? 'fold' : 'middle'}" style="animation-delay:${i * 0.13}s">
+          <div>
+            <div class="reveal-name">${esc(m.name)}${m.brokePledge ? '<span class="tag broken">BROKE A PLEDGE</span>' : m.pledged ? '<span class="tag kept">KEPT HIS WORD</span>' : ''}${m.wentQuiet ? '<span class="tag quiet">SAID NOTHING</span>' : ''}${m.card ? `<span class="tag" style="color:var(--gold)">${esc(m.card.name.toUpperCase())}</span>` : ''}</div>
+            <div class="reveal-verdict ${m.held ? 'stand' : m.sold ? 'fold' : ''}">${m.move ? esc(m.move) : 'YOU WERE NOT TOLD'}</div>
+          </div>
+          <div class="reveal-amount ${m.total == null ? '' : m.total >= 0 ? 'pos' : 'neg'}">${m.total == null ? '\u2014' : money(m.total)}</div>
+        </div>`).join('')}
+    </div>`;
+
+  // Your job gets the whole table: a stamped verdict, the moves turning over
+  // one at a time, then what it cost you.
+  const yourBlock = (g, isMine = true) => {
+    const you = g.members.find((m) => m.id === youId);
+    const take = you?.total ?? 0;
+    return `
+    <article class="dossier showdown ${g.tone === 'action' ? 'action' : ''}" data-case="${isMine ? 'YOUR JOB' : 'ELSEWHERE'}">
+      <div class="verdict">${esc(verdictOf(g))}</div>
+      <h2>${esc(g.title)}</h2>
+      ${revealRows(g)}
+      ${isMine && you ? `<div class="your-take">
+        <span class="yt-l">your end of it</span>
+        <span class="yt-n ${take >= 0 ? 'pos' : 'neg'}">${money(take)}</span>
+      </div>` : ''}
       <div class="narration" data-type="${esc(g.id)}">${esc(g.narration)}</div>
       ${isMine ? `<p class="coda">${esc(g.coda)}</p>` : ''}
       ${isMine && g.yourLines.length ? `<div class="rule"></div><div class="lines">
         ${g.yourLines.map((l) => `<div class="line"><b>${esc(l.label)}</b><span class="amt ${l.amount >= 0 ? 'pos' : 'neg'}">${money(l.amount)}</span></div>`).join('')}
       </div>` : ''}
-      ${!isMine && g.allLines ? `<div class="rule"></div>${g.allLines.map((p) => `
-        <div class="lines" style="margin-bottom:8px">
-          <div class="line" style="border:none"><b style="color:var(--bone)">${esc(p.name)}</b><span></span></div>
-          ${p.lines.map((l) => `<div class="line"><b>${esc(l.label)}</b><span class="amt ${l.amount >= 0 ? 'pos' : 'neg'}">${money(l.amount)}</span></div>`).join('')}
-        </div>`).join('')}` : ''}
     </article>`;
+  };
+
+  // The other rooms stay folded shut until somebody wants them.
+  const elsewhereBlock = (g) => `
+    <details class="recap elsewhere">
+      <summary><b>${esc(g.title)}</b> \u00b7 ${esc(verdictOf(g).toLowerCase())}</summary>
+      <div class="recap-job">
+        ${revealRows(g)}
+        <p class="recap-narr">${esc(g.narration)}</p>
+        ${g.allLines ? g.allLines.map((p) => `
+          <div class="lines" style="margin-top:8px">
+            <div class="line" style="border:none"><b style="color:var(--ink)">${esc(p.name)}</b><span></span></div>
+            ${p.lines.map((l) => `<div class="line"><b>${esc(l.label)}</b><span class="amt ${l.amount >= 0 ? 'pos' : 'neg'}">${money(l.amount)}</span></div>`).join('')}
+          </div>`).join('') : ''}
+      </div>
+    </details>`;
 
   return `
-  <section>
-    <p class="stamp">round ${state.round} of ${state.totalRounds} · ${esc(state.twist?.name ?? '')}</p>
-    ${mine ? groupBlock(mine, true) : ''}
-    ${others.length ? `<p class="stamp" style="margin:26px 0 10px">${mine ? 'meanwhile, in the other rooms' : 'what happened tonight'}</p>${others.map((g) => groupBlock(g, false)).join('')}` : ''}
+  <section class="showdown-wrap">
+    <p class="stamp">round ${state.round} of ${state.totalRounds}${state.twist?.name ? ` \u00b7 ${esc(state.twist.name)}` : ''}</p>
+    ${mine ? yourBlock(mine) : ''}
+    ${others.length ? `<p class="stamp" style="margin:26px 0 10px">${mine ? 'meanwhile, in the other rooms' : 'what happened tonight'}</p>
+      ${mine ? others.map(elsewhereBlock).join('') : others.map((g) => yourBlock(g, false)).join('')}` : ''}
     <div class="row" style="justify-content:center;margin-top:20px">
       <button class="btn" data-act="ready">${state.round >= state.totalRounds ? 'TO THE LEDGER' : 'NEXT'}</button>
     </div>
@@ -1077,7 +1130,7 @@ function viewAccusation() {
   <section>
     <p class="stamp">last thing before the ledger</p>
     <h2 style="font-family:var(--mono);letter-spacing:0.14em;font-size:clamp(20px,5vw,30px);margin:8px 0 14px">NAME THE RAT</h2>
-    <p style="max-width:52ch;color:var(--bone-dim)">
+    <p style="max-width:52ch;color:var(--ink-soft)">
       One person at this table has been on the DA’s payroll since before the first job — paid per betrayal, all night, whatever they told you.
       Point at them. Get it right and it is worth ${money(15)}. Get it wrong and you have just paid them for the privilege.
     </p>
@@ -1114,14 +1167,14 @@ function viewLedger() {
     <h2 style="font-family:var(--mono);letter-spacing:0.16em;font-size:clamp(22px,6vw,36px);margin:8px 0 6px">
       ${esc(winner.name.toUpperCase())} WALKS
     </h2>
-    <p style="color:var(--bone-dim);font-style:italic;margin-bottom:22px">${esc(winnerLine(L))}</p>
+    <p style="color:var(--ink-soft);font-style:italic;margin-bottom:22px">${esc(winnerLine(L))}</p>
 
     <div class="standings">
       ${L.standings.map((s) => `
         <div class="standing ${s.rank === 1 ? 'first' : ''}">
           <div class="rank">${s.rank}</div>
           <div>
-            <div class="nm">${s.crew ? `<span class="crew-dot" style="background:${s.crew.colour}"></span>` : ''}${esc(s.name)}${s.bot ? ' <span style="color:var(--bone-faint);font-size:10px">GHOST</span>' : ''}</div>
+            <div class="nm">${s.crew ? `<span class="crew-dot" style="background:${s.crew.colour}"></span>` : ''}${esc(s.name)}${s.bot ? ' <span style="color:var(--ink-faint);font-size:10px">GHOST</span>' : ''}</div>
             <div class="rl">${[
               s.role ? `${esc(s.role.name)} — ${esc(s.role.tag)}` : '',
               `held ${s.stats.stands}, folded ${s.stats.folds}`
@@ -1150,9 +1203,9 @@ function viewLedger() {
 
     ${L.rat ? `
       <p class="stamp">the rat</p>
-      <div class="dossier" style="margin:10px 0 24px;border-left-color:var(--blood)">
+      <div class="dossier" style="margin:10px 0 24px;border-left-color:var(--red)">
         <h2 style="font-size:19px">${esc(L.rat.name)} was on the payroll the entire time</h2>
-        <p style="color:var(--bone-dim)">
+        <p style="color:var(--ink-soft)">
           ${L.accusations.filter((a) => a.correct).length === 0
             ? 'Nobody called it. Not one person. They were paid for every single name they gave up and then paid again for the silence around it.'
             : `${esc(L.accusations.filter((a) => a.correct).map((a) => a.voter).join(', '))} saw it. Everybody else paid for the privilege of being wrong.`}
@@ -1163,7 +1216,7 @@ function viewLedger() {
       </div>` : ''}
 
     <p class="stamp">the bonds</p>
-    <p style="color:var(--bone-dim);font-size:14px;margin:6px 0 4px">
+    <p style="color:var(--ink-soft);font-size:14px;margin:6px 0 4px">
       Every line is two people who were locked in a room together. This is what it came to.
     </p>
     ${bondWeb(L.bonds, L.standings)}
@@ -1202,9 +1255,9 @@ function viewLedger() {
           <summary><b>ROUND ${r.round}</b> · ${esc(r.twist.name)}${r.heat != null ? ` · heat ${r.heat}` : ''}</summary>
           ${r.groups.map((g) => `
             <div class="recap-job">
-              <div class="recap-title">${esc(g.title)}${g.switched ? ' <span style="color:var(--gold)">· SWITCHED</span>' : ''}${g.callback ? ' <span style="color:var(--blood-bright)">· CALLBACK</span>' : ''}</div>
+              <div class="recap-title">${esc(g.title)}${g.switched ? ' <span style="color:var(--gold)">· SWITCHED</span>' : ''}${g.callback ? ' <span style="color:var(--red-bright)">· CALLBACK</span>' : ''}</div>
               <div class="recap-line">${g.members.map((m) =>
-                `<span style="color:${m.trueChoice === 'stand' ? 'var(--green)' : 'var(--blood-bright)'}">${esc(m.name)} ${m.trueChoice === 'stand' ? 'held' : 'folded'}</span>`).join(' · ')}</div>
+                `<span style="color:${m.trueChoice === 'stand' ? 'var(--good)' : 'var(--red-bright)'}">${esc(m.name)} ${m.trueChoice === 'stand' ? 'held' : 'folded'}</span>`).join(' · ')}</div>
               <div class="recap-narr">${esc(g.narration)}</div>
             </div>`).join('')}
           ${r.cards.length ? `<div class="recap-job"><div class="recap-title">CARDS</div><div class="recap-narr">
@@ -1242,16 +1295,16 @@ function bondVerdict(b) {
   const betrayals = b.betrayA + b.betrayB;
   if (b.rounds === 0) return 'never worked together';
   if (betrayals === 0 && b.mutualFold === 0 && b.murky === 0) {
-    return `<span style="color:var(--green)">clean, ${b.mutualStand}/${b.rounds}</span>`;
+    return `<span style="color:var(--good)">clean, ${b.mutualStand}/${b.rounds}</span>`;
   }
   if (betrayals === 0 && b.mutualFold === 0) {
     return `<span style="color:var(--gold)">never quite straight with each other</span>`;
   }
   if (betrayals === 0) return `both folded ${b.mutualFold}× — mutually assured`;
-  if (b.betrayA && b.betrayB) return `<span style="color:var(--blood-bright)">went both ways</span>`;
+  if (b.betrayA && b.betrayB) return `<span style="color:var(--red-bright)">went both ways</span>`;
   const traitor = b.betrayA ? b.aName : b.bName;
   const mark = b.betrayA ? b.bName : b.aName;
-  return `<span style="color:var(--blood-bright)">${esc(traitor)} folded on ${esc(mark)}</span>`;
+  return `<span style="color:var(--red-bright)">${esc(traitor)} folded on ${esc(mark)}</span>`;
 }
 
 function bondWeb(bonds, standings) {
@@ -1313,7 +1366,7 @@ function showCard() {
       ${crew ? `<div class="rule"></div><div class="ct">your crew</div>
         <div style="font-family:var(--mono);font-size:14px;color:${crew.colour}">${esc(crew.name)}</div>` : ''}
       ${state.you.debts?.length ? `<div class="rule"></div><div class="ct">what you owe</div>
-        ${state.you.debts.map((d) => `<div style="font-size:14px;color:var(--blood-bright)">${esc(d.label)} — ${money(d.amount)}</div>`).join('')}` : ''}
+        ${state.you.debts.map((d) => `<div style="font-size:14px;color:var(--red-bright)">${esc(d.label)} — ${money(d.amount)}</div>`).join('')}` : ''}
     </div>`;
   $('#cardModal').classList.remove('hidden');
 }
@@ -1344,6 +1397,7 @@ document.addEventListener('click', (ev) => {
       if (input?.value.trim()) { send({ t: 'addLocal', name: input.value.trim() }); input.value = ''; }
       break;
     }
+    case 'hand': handUp = !handUp; render(); break;
     case 'removeLocal': send({ t: 'removeLocal', id: btn.dataset.id }); break;
     case 'removeBot': send({ t: 'removeBot', id: btn.dataset.id }); break;
     case 'addBot': send({ t: 'addBot' }); break;

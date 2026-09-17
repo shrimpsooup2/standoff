@@ -98,7 +98,7 @@ test.before(async () => {
 test.after(() => { server?.kill(); });
 
 test('the page and its assets are served', async () => {
-  for (const [p, needle] of [['/', 'STANDOFF'], ['/style.css', '--blood'], ['/app.js', 'WebSocket']]) {
+  for (const [p, needle] of [['/', 'STANDOFF'], ['/style.css', '--felt'], ['/app.js', 'WebSocket']]) {
     const r = await fetch(URL_BASE + p);
     assert.equal(r.status, 200, `${p} should be served`);
     assert.ok((await r.text()).includes(needle), `${p} should contain ${needle}`);

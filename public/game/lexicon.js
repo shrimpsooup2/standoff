@@ -84,11 +84,22 @@ export function rollDetails(rng) {
 }
 
 /** Replace {slots} in a template. Unknown slots are left alone, loudly. */
+/* A lexicon entry is written to read mid-sentence ("...told a young assistant
+   DA with something to prove"), so when one lands at the start of a sentence it
+   arrives lowercase. Put the capital back. Nothing in the corpus ends a word
+   with a full stop except the end of a sentence, so this is safe. */
+function sentenceCase(text) {
+  return text
+    .replace(/^(\s*[\u201c"']?)([a-z])/, (m, lead, c) => lead + c.toUpperCase())
+    .replace(/([.!?]\s+[\u201c"']?)([a-z])/g, (m, lead, c) => lead + c.toUpperCase());
+}
+
 export function fill(template, ctx) {
   if (typeof template !== 'string') return template;
-  return template.replace(/\{(\w+)\}/g, (m, key) =>
+  const out = template.replace(/\{(\w+)\}/g, (m, key) =>
     Object.prototype.hasOwnProperty.call(ctx, key) ? String(ctx[key]) : m,
   );
+  return out === template ? out : sentenceCase(out);
 }
 
 export function fillDeep(value, ctx) {

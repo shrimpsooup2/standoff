@@ -235,7 +235,25 @@ public/game/           the engine — plain ES modules, so it runs on both sides
   roles.js twists.js bots.js
 public/net/local.js    the engine running in the page: pass-and-play and solo
 public/app.js          one page, one render function, three transports
+public/style.css       the table: green baize, one hard light, and paper you can pick up
 ```
+
+## What it looks like
+
+The whole thing is a card table under one overhead lamp. The light lives on the
+felt and falls off at the edges, so the middle of the screen is where you look.
+
+Everything the game hands you is a physical sheet of paper — a taped-down dossier
+for the job, a rubber-stamped verdict at the reckoning, a note with the pressure
+on it — sitting slightly crooked on the baize. Who is at the table runs across
+the top as chips. On a wide screen the job sits on the left and what you can do
+about it sits on the right, so deciding does not mean scrolling. Your hand is
+fanned along the bottom edge of the table and stays tucked under it until you
+pull it out.
+
+Two colour tokens carry all of it: `--ink` and friends mean bone on the felt and
+dark ink on paper, so a new element lands readable on either surface without
+anybody remembering which is which.
 
 ## A note on playing it
 

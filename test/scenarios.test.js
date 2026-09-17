@@ -310,3 +310,34 @@ test('a job never offers two moves with the same name', () => {
     assert.equal(new Set(ids).size, ids.length, `${scenario.id} repeats a move id`);
   }
 });
+
+test('a lexicon detail dropped at the start of a sentence still reads as one', () => {
+  // Entries like "a young assistant DA with something to prove" are written to
+  // sit mid-sentence. When one lands after a full stop it has to be capitalised.
+  let scanned = 0;
+  for (let seed = 0; seed < 220; seed++) {
+    const rng = makeRng(`case-${seed}`);
+    for (const [kind, names] of [
+      ['pair', ['Andre', 'Mo']],
+      ['trio', ['Andre', 'Mo', 'Kit']],
+      ['table', ['Andre', 'Mo', 'Kit', 'Sal']],
+    ]) {
+      const members = names.map((name, i) => ({ id: `p${i}`, name }));
+      const job = makeJob(rng, { kind, members, deck: makeDeck(rng), action: seed % 7 === 0 });
+      const prose = [job.title, job.pressure, job.coda ?? '', ...(job.setup ?? [])];
+      for (let k = 0; k < job.options.length; k++) {
+        const picks = {};
+        members.forEach((m, i) => { picks[m.id] = job.options[(i + k) % job.options.length].id; });
+        prose.push(narrate(job, members, picks));
+      }
+      for (const text of prose) {
+        scanned++;
+        const s = String(text).trim();
+        assert.ok(!/^[a-z]/.test(s), `starts lowercase: ${s.slice(0, 80)}`);
+        const mid = s.match(/[.!?]\s+[a-z]/);
+        assert.ok(!mid, `sentence starts lowercase: ...${s.slice(Math.max(0, mid?.index - 50), (mid?.index ?? 0) + 50)}...`);
+      }
+    }
+  }
+  assert.ok(scanned > 3000, `only scanned ${scanned} strings`);
+});
