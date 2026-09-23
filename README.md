@@ -4,8 +4,8 @@ A game of trust, betrayal and organised crime, told one night at a time. Bring
 friends. Lose them.
 
 STANDOFF is a game of chapters. Each chapter is one story — its own week, its own
-people, its own ending — played over about an hour by two to ten people, each on
-their own phone or passing one around.
+people, its own ending — played over about ninety minutes (or forty-five, for a
+short week) by two to ten people, each on their own phone or passing one around.
 
 ## Chapter 1: Sal's Ledger
 
@@ -30,8 +30,12 @@ down, he names names, and everybody without a deal loses half.
 
 Then the richest person at the table wins.
 
-### Three things on your phone
+### Four things on your phone
 
+- **Who you are.** In Nonna's kitchen, before the first night, everybody picks one
+  of two pasts: Sal's godchild, Dolores's kid, Ray Mancuso's old partner, Walt's
+  boxing kid, Prout's homeroom classmate, Rosemarie Castellano's ex. The whole table
+  knows it, and somebody out in the neighbourhood treats you differently for it.
 - **A job.** The Talker, the Driver, the Numbers Guy, the Muscle, the Cousin, the
   Fixer, the Lookout, the Mechanic, the Altar Boy, the New Guy. Everybody knows
   yours. Each does one thing.
@@ -45,8 +49,11 @@ Then the richest person at the table wins.
 
 ### A night is a story
 
-Every night is a short episode of four to six beats, each one a different kind of
-decision, with a time and a place on it:
+Every night is a short episode, each beat a different kind of decision, with a time
+and a place on it. Before the job, everybody gets **twenty minutes to themselves** —
+their own little scene, at the same time as everybody else's: the Driver at a red
+light next to a patrol car, the Talker practising in the Starlite's washroom mirror,
+Prout's classmate stopped by Prout on his evening run. Then the job:
 
 > **10:15 p.m. — The Napkin.** Three banks on a napkin. A vote, and some of you have
 > a private reason to want one of them. A tie goes to a die that shows which faces
@@ -63,6 +70,10 @@ decision, with a time and a place on it:
 > something that bends them.
 >
 > **12:40 a.m. — Counting It Out.** How much of what you took goes in the Bag.
+>
+> **Late — Afterwards.** Back at Nonna's with whoever made it back. She reacts to
+> the Bag, counts the empty chairs, and asks the table a question to argue about
+> out loud.
 
 After Night One the director picks what comes next from what already happened:
 rob the Castellanos' own bank and the next night is their retaliation. Across the
@@ -71,8 +82,17 @@ Pier 9, a fight on a casino boat, a Castellano wedding, an accountant in room 14
 a motel, Father Dominic's tapes, Nonna's ring in a pawn shop window, an armored car
 and a gym bag on the hood of a car at the end of a pier — and every one of them
 branches, picks complications at random, and changes its details, so no two weeks
-play the same. Between nights: the morning paper, Sal calling from county, a card
-each. Twice a week, Prout sees everybody alone.
+play the same. Between nights: the morning paper, Sal calling from county (and
+talking to whoever he's got a history with), a card each — and **the day**.
+Everybody privately chooses how to spend it: work, stay in with the blinds down
+until the heat cools, visit Sal, or go and see *your* person, who gives you
+something only they can. Dolores tells you one true thing she overheard last night;
+Ray makes paperwork disappear; Morty tells you what's really in Prout's folder.
+Everybody sees where everybody went. Nobody sees what they came back with. Twice
+a week, Prout sees everybody alone.
+
+Whatever happens to you alone — a tip from Vinnie, a receipt Benny wrote for more
+than he took — shows up on your own screen as it happens, for your eyes only.
 
 ### Who knows what
 

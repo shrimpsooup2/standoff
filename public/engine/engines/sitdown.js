@@ -60,11 +60,11 @@ export default {
         if (!t || t.id === pid) return { error: 'Whose?' };
         p.cash -= item.cost;
         const sv = g.chapter.secretView(g.ctx(), t);
-        p.notes.push({ from: 'Dolores', text: `${t.name}'s secret: “${sv.name}” — ${sv.text}`, night: g.s.week.i });
+        g.noteTo(p.id, `${t.name}'s secret: “${sv.name}” — ${sv.text}`, 'Dolores');
       } else if (a.item === 'card') {
         p.cash -= item.cost;
         const [card] = g.draw(pid, 1);
-        if (card) p.notes.push({ from: 'Dolores', text: 'She slid something across the counter.', night: g.s.week.i });
+        if (card) g.noteTo(p.id, 'She slid something across the counter.', 'Dolores');
       } else if (a.item === 'cool') {
         if (p.heat <= 0) return { error: 'You’ve got no heat to cool.' };
         p.cash -= item.cost;

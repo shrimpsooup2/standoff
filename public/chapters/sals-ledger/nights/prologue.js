@@ -1,10 +1,11 @@
 // Monday, 6:10 a.m. Sal is arrested in his garden, and the week begins.
 
 import { money } from '../common.js';
+import { bioOptions, bioView } from '../bios.js';
 
 export default {
   id: 'prologue', title: 'The Arrest', act: 0, interlude: true, day: 'MONDAY, 6:10 A.M.', kicker: 'PROLOGUE',
-  beats: ['arrest', 'kitchen', 'club'],
+  beats: ['arrest', 'street', 'kitchen', 'club', 'who'],
   defs: {
     arrest: {
       engine: 'story', time: '6:10 A.M.', place: 'Sal’s garden, Mulberry Avenue', title: 'The Arrest', kicker: 'PROLOGUE',
@@ -25,6 +26,21 @@ export default {
           'The charge is tax fraud. The problem is the ledger: thirty-one years of every favour, payoff and debt in this neighbourhood, in Sal’s handwriting, and it is no longer where Sal left it.',
           'Assistant District Attorney Wendell Prout wants the ledger. The Castellanos across the river want the neighbourhood. Sal’s lawyer wants money by next Monday.',
           'Sal wants you.',
+        ];
+      },
+    },
+    street: {
+      engine: 'story', time: '7:40 A.M.', place: 'Mulberry Avenue, Ferry Street, and everywhere in between', title: 'The Neighbourhood', kicker: 'WHO’S WHO',
+      text(c) {
+        return [
+          `By a quarter to eight the whole neighbourhood knows. ${c.rng.pick(['The bakery on Fifth has stopped pretending to sell bread and is just selling news.', 'The man who sells papers outside the subway is doing it from memory.', 'Somebody has already left a candle on Sal’s front step.'])} These are the people you’ll be dealing with this week.`,
+          'Dolores, who has run the diner on Ferry Street since 1971, has the radio turned up and the coffee on for whoever comes in first. She hears everything said in that diner, and repeats about a tenth of it.',
+          'Father Dominic is saying the eight o’clock Mass at St. Anthony’s to eleven widows and a man asleep in the back pew. He has already decided to pray for Sal. He hasn’t decided what for.',
+          'Ray Mancuso, who read Sal his rights, is at the 9th Precinct typing it up very slowly with two fingers. Ray has been on three payrolls at once since 1989, and can tell you to the dollar what each of them pays.',
+          'Walt Kowalski, seventy-three, has guarded Harbor Savings since 1979 and has heard about Sal on his transistor radio. He says a Hail Mary and pours another coffee from his thermos.',
+          'Morty Klein, Sal’s lawyer, is in his office on Court Street with a cigar he claims not to smoke, doing arithmetic about his fee.',
+          'Assistant District Attorney Wendell Prout ran six miles before sunrise and is already at his desk with the folder. He has been waiting eleven years for this folder.',
+          'And Gary Feld, Sal’s accountant — the only other man alive who has read the ledger — hasn’t been seen since Sunday night.',
         ];
       },
     },
@@ -57,6 +73,28 @@ export default {
           '“Sal Benedetto goes to court on Monday,” he says. “If he walks, nothing changes. If he doesn’t, this neighbourhood is ours by Christmas. Prout will need help. We are going to help him.”',
           'He puts a cigar box on the card table and calls it the Envelope. Then he deals out the week, the same way Nonna did, because they learned it from the same man.',
         ];
+      },
+    },
+    who: {
+      engine: 'choose', time: '8:45 A.M.', place: 'Around the table', title: 'Who You Are', kicker: 'BEFORE THE WEEK',
+      text: (c) => [
+        c.rng.pick([
+          'Before anybody does anything, Nonna goes round the table the way she does at christenings, and makes everybody say who they are to this family. Everybody already knows. That isn’t the point.',
+          'Nonna pours the second espresso and says, to the table, “Tell me who you are.” She knows. She wants to hear you say it.',
+        ]),
+        'Everybody has two ways to answer, and keeps one. Whatever you pick, the whole table knows it — and somebody out there in the neighbourhood will treat you differently for it.',
+      ],
+      who: (c) => c.players.map((p) => p.id),
+      options: (c, pid) => bioOptions(c, c.p(pid)).map((b) => ({ id: b.id, label: b.name, blurb: b.text })),
+      resolve(c, { choices }) {
+        for (const p of c.players) {
+          const pick = choices[p.id]?.option;
+          p.bio = (p.bioOptions ?? []).includes(pick) ? pick : (p.bioOptions?.[0] ?? null);
+        }
+        for (const p of c.players) {
+          const b = bioView(c, p);
+          if (b) c.line(`${p.name}: ${b.name}. ${b.text}`);
+        }
       },
     },
   },

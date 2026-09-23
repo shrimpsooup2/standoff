@@ -27,7 +27,7 @@ function announce(g, text) {
 function quiet(g, p, card, what) {
   g.s.quiet = g.s.quiet ?? [];
   g.s.quiet.push({ pid: p.id, card: card.id, night: g.s.week.i, what: what ?? null });
-  g.s.night?.facts.push({ about: p.id, key: `card:${card.id}`, q: `Did ${p.name} play a face-down card tonight?`, a: true, night: g.s.week.n });
+  g.recordFact({ about: p.id, key: `card:${card.id}`, q: `Did ${p.name} play a face-down card tonight?`, a: true, night: g.s.week.n });
 }
 
 export const CARDS = {
@@ -138,7 +138,7 @@ export const CARDS = {
       if (!t || t.id === p.id) return { error: 'Whose line?' };
       const sv = g.chapter.secretView(g.ctx(), t);
       const cards = t.cards.map((c) => CARDS[c.id]?.name ?? c.id).join(', ') || 'no cards';
-      p.notes.push({ from: 'the wire', text: `${t.name}: ${money(t.cash)} in cash. Holding ${cards}. Secret: “${sv.name}” — ${sv.text}`, night: g.s.week.i });
+      g.noteTo(p.id, `${t.name}: ${money(t.cash)} in cash. Holding ${cards}. Secret: “${sv.name}” — ${sv.text}`, 'the wire');
       return { ok: true };
     },
   },
@@ -174,7 +174,7 @@ export const CARDS = {
       if (!t || t.id === p.id) return { error: 'Whose?' };
       if (b.engine === 'choose') { b.data.peeks[p.id] = t.id; return { ok: true }; }
       const move = b.engine === 'grab' ? b.data.moves[t.id] : b.data.moves[t.id];
-      p.notes.push({ from: 'the peephole', text: move ? `${t.name} chose to ${move}.` : `${t.name} hasn’t decided yet.`, night: g.s.week.i });
+      g.noteTo(p.id, move ? `${t.name} chose to ${move}.` : `${t.name} hasn’t decided yet.`, 'the peephole');
       return { ok: true };
     },
   },

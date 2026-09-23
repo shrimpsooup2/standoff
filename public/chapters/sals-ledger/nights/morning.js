@@ -3,19 +3,14 @@
 import { money, morningDay, milestoneNow, round5k } from '../common.js';
 import { salCall } from '../calls.js';
 import { handLimit } from '../../../engine/cards.js';
+import { dayOptions, runDay, botDay } from '../bios.js';
 
 export default {
   id: 'morning', title: 'The Morning', interlude: true, kicker: 'THE MORNING',
   day: (c) => morningDay(c),
-  beats: ['news'],
+  beats: ['news', 'day'],
   open(c) {
-    // heat cools for anybody who kept their head down last night
-    for (const p of c.players) {
-      if (p.heat > 0 && p.lastHeat?.night !== c.s.week.n && !(p.jailUntil != null && p.jailUntil >= c.s.week.n)) {
-        p.heat -= 1;
-        c.note(p.id, 'You kept your head down last night. One heat has cooled off.', 'the neighbourhood');
-      }
-    }
+    // heat no longer cools by itself: staying in for the day is how it cools
     // everybody draws a card; a full hand sells the new one to the Fence
     for (const p of c.players) {
       const [card] = c.g.draw(p.id, 1);
@@ -38,6 +33,24 @@ export default {
     }
   },
   defs: {
+    day: {
+      engine: 'choose', time: '9:00 A.M.', place: 'The neighbourhood', title: 'The Day', kicker: 'HOW DO YOU SPEND IT?',
+      text: (c) => [
+        c.rng.pick([
+          'Nobody robs anything in daylight. The day is long, the neighbourhood is awake, and everybody at this table has somewhere they could be.',
+          'Nonna clears the cups and sends everybody out. “Go. Be somewhere. Be back by dark.”',
+          'It’s a grey morning. The bakeries are open, the precinct is open, and so is Dolores’s. Everybody has until dark.',
+        ]),
+        'Everybody chooses, privately, how to spend the day. Everybody will know where you were. Nobody will know what you got out of it.',
+      ],
+      who: (c) => c.free.map((p) => p.id),
+      options: (c, pid) => dayOptions(c, c.p(pid)),
+      bot(c, p, opts) {
+        const id = botDay(c, p, opts);
+        return id ? { option: id } : null;
+      },
+      resolve(c, { choices }) { runDay(c, choices); },
+    },
     news: {
       engine: 'story', place: 'Nonna’s kitchen', title: (c) => 'The Morning', kicker: 'THE HARBOR COURIER',
       time: '7:15 A.M.',

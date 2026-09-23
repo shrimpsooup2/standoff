@@ -61,7 +61,7 @@ function settings(state, isHost) {
   const c = state.config;
   const opt = (key, value, label) => `<button class="chipbtn${c[key] === value ? ' on' : ''}" ${isHost ? `data-act="${data({ t: 'config', [key]: value })}"` : 'disabled'}>${label}</button>`;
   return `<div class="settings">
-    <div class="setting"><span class="stamp">the week</span>${opt('length', 'full', 'Seven nights · about an hour')}${opt('length', 'short', 'Four nights · half an hour')}</div>
+    <div class="setting"><span class="stamp">the week</span>${opt('length', 'full', 'Seven nights · about ninety minutes')}${opt('length', 'short', 'Four nights · about forty-five minutes')}</div>
     <div class="setting"><span class="stamp">the clock</span>${opt('clock', true, 'On')}${opt('clock', false, 'Off')}${c.clock ? `${opt('pace', 'relaxed', 'Relaxed')}${opt('pace', 'normal', 'Normal')}${opt('pace', 'brisk', 'Brisk')}` : ''}</div>
     <div class="setting"><span class="stamp">a rat at the table</span>${opt('rat', 'auto', 'From five players')}${opt('rat', 'on', 'Always')}${opt('rat', 'off', 'Never')}</div>
     <div class="setting"><span class="stamp">two families</span>${opt('families', 'auto', 'From seven players')}${opt('families', 'on', 'Always')}${opt('families', 'off', 'Never')}
@@ -173,6 +173,13 @@ function fallout(ctx) {
     out.push(`<div class="last-roll">${b.lastRoll.dice.map((f) => die(f, { size: 44 })).join('')}<span>${b.lastRoll.total}${b.lastRoll.target != null ? ` of ${b.lastRoll.target} — ${b.lastRoll.success ? 'made it' : 'missed'}` : ''}</span></div>`);
   }
   if (b.lines?.length) out.push(`<div class="lines">${b.lines.map((l) => `<p>${esc(l)}</p>`).join('')}</div>`);
+  // what happened to you, that nobody else at the table saw
+  if (b.mine?.length && !ctx.shared) {
+    out.push(`<div class="eyes-only"><span class="stamp">for your eyes only</span>${b.mine.map((n) => `<p>${n.from ? `<span class="from">${esc(n.from)}</span>` : ''}${esc(n.text)}</p>`).join('')}</div>`);
+  }
+  if (ctx.shared && b.eyesOnly?.length) {
+    out.push(`<p class="eyes-note">There’s something for ${esc(listNames(b.eyesOnly.map((x) => x.name)))} to read alone. Take a private look before carrying on.</p>`);
+  }
   out.push(receipt(b.receipt, state));
   if (device) {
     out.push(`<div class="row center">${cmdBtn('Carry on', 'nextAll', {}, { cls: 'btn big' })}</div>`);

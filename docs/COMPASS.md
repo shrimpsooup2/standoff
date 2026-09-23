@@ -191,11 +191,12 @@ That is the whole design in a sentence: **private reasons, public decisions, a w
 
 ## Who you are
 
-Players stay themselves — real names in the story, the thing that makes this land. On top of that, each person gets exactly three things, always visible on their phone:
+Players stay themselves — real names in the story, the thing that makes this land. On top of that, each person gets four things, always visible on their phone:
 
-1. **A job** — what you do for the crew, with one ability.
-2. **A secret** — what you personally want this week, and what it pays.
-3. **Two cards.**
+1. **Who you are** — one of two pasts, picked in Nonna's kitchen before the first night, public: Sal's godchild, Dolores's kid, Ray Mancuso's old partner, Walt's boxing kid, Prout's homeroom classmate, Gary's best student. It ties you to one person in the neighbourhood, who talks to you differently and gives you something only they can when you spend a day with them. Sal's morning call knows who you are to him.
+2. **A job** — what you do for the crew, with one ability.
+3. **A secret** — what you personally want this week, and what it pays.
+4. **Two cards.**
 
 Some nights add a fourth, just for that night: **an angle**, a private reason to want something, dealt by the scene.
 
@@ -252,7 +253,9 @@ Heat is personal, zero to three, shown as pips on your seat. At three you're **a
 
 ## A night is a story
 
-Each night is a short episode of four to six **beats**, somewhere around eight minutes. The beats run in order, like scenes: the setup, the way in, the thing going wrong, the way out, and the count. Each beat is one decision, and no two in a row are the same kind.
+Each night is a short episode of six to eight **beats**, somewhere around twelve minutes, and it is allowed to breathe. The beats run in order, like scenes: the setup, **twenty minutes to yourself**, the way in, the thing going wrong, the way out, the count, and **afterwards**. Each beat is one decision, and no two in a row are the same kind.
+
+*Twenty minutes* is everybody's own scene at once, drawn from what they do, what they want, who they are and how the week is going: the Driver at a red light next to a patrol car, the rat in the back of a grey sedan, the godchild walking past Sal's unwatered tomatoes. One small choice each — a little money, a little heat, a true piece of gossip, or an edge (+1 on the next roll you're in, one edge to a roll). *Afterwards* is back at the table the night started from, with whoever made it back: the empty chairs, Nonna's reaction to the Bag, and a question for the room to argue about out loud.
 
 **Night 1 — The Three Banks**, in full:
 
@@ -275,7 +278,7 @@ Every beat follows the same shape, so nobody has to learn a new one:
 
 Beats can branch. In *The Night Guard*, the crew votes on how to get into Pier 9: the front gate means talking to Lenny; the fence means a roll; the water means everybody has to row. Same night, three different middles.
 
-Between nights, the crew is back in Nonna's kitchen: the *Harbor Courier* runs a headline about what you did, Sal calls from lockup, everybody draws a card.
+Between nights, the crew is back in Nonna's kitchen: the *Harbor Courier* runs a headline about what you did, Sal calls from lockup, everybody draws a card. Then **the day**: everybody privately chooses how to spend it — work, stay in until the heat cools (heat no longer cools by itself), visit Sal, or see their own person. Everybody learns where everybody went; nobody learns what they came back with. Having lunch with Wendell Prout is a perfectly good way to spend a day, and the whole table will know you did.
 
 ### The one thing that happens every night
 

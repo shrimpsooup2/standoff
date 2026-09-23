@@ -1,6 +1,27 @@
 // Sal rings from county every morning. What he says depends on what you did.
 
+const bio = (id, say) => ({
+  when: (c) => c.players.some((p) => p.bio === id && !(p.jailUntil != null && p.jailUntil >= c.s.week.n)),
+  text: (c) => say(c.players.find((p) => p.bio === id).name),
+});
+
 export const CALLS = [
+  // Sal knows who everybody is to him, and says so
+  bio('godchild', (n) => `“Is ${n} there? Is ${n} eating? Put ${n} on.” A pause. “No. Don’t. I’ll get upset. Tell my godchild I said to eat.”`),
+  bio('tomato', (n) => `“${n} had better not be anywhere near my tomatoes. I know about 1997. I have always known about 1997.”`),
+  bio('palermo', (n) => `“${n}’s Italian is better than mine now. Tell Ma I said so. She’ll hit me. Tell her anyway.”`),
+  bio('jersey', (n) => `“${n} came back from Jersey for this? For me?” Sal is quiet for a while. “Go home, you’ll get hurt. No. Stay.”`),
+  bio('booth', (n) => `“Tell Dolores I dream about her eggs. ${n}, you tell her. She listens to you.”`),
+  bio('starlite', (n) => `“${n}, pour one for me at the Starlite tonight. Don’t drink it. Just pour it and look at it.”`),
+  bio('partner', (n) => `“Ray Mancuso came to see me. He asked about ${n}. Ray doesn’t ask about people. That’s how you know.”`),
+  bio('seminary', (n) => `“${n}, light a candle for me at St. Anthony’s. You know how. You were almost a professional.”`),
+  bio('client', (n) => `“Morty says ${n} still owes him from ’92. Morty says that about everybody. In ${n}’s case it’s true.”`),
+  bio('boxer', (n) => `“Walt Kowalski came by. Walt! He asked after ${n}. He says keep your left up. I don’t know what it means. He says you do.”`),
+  bio('student', (n) => `“${n} learned the books from Gary. So ${n} knows what’s in mine. Don’t tell me. I wrote it, I don’t want to hear it.”`),
+  bio('ex', (n) => `“${n}. Rosemarie Castellano. I was at that wedding. Everybody was at that wedding. Nobody talks about that wedding.”`),
+  bio('homeroom', (n) => `“${n} went to school with Prout? Was he always like this? Don’t tell me. I know he was.”`),
+  bio('shopkid', (n) => `“Benny still has my father’s watch in that shop. ${n}, ask him about it. No — don’t. Let him keep it. It doesn’t work anyway.”`),
+
   { when: (c) => c.flag('war'), text: () => '“You robbed Vinnie’s bank? VINNIE’S? Madonna.” A long silence on the line. “How are the tomatoes?”' },
   { when: (c) => c.flag('bank') === 'first-federal', text: () => '“First Federal. I went to school with Harold Pruitt. He cried at his own wedding. Did he cry?”' },
   { when: (c) => c.flag('bank') === 'harbor' && c.flag('waltSaw'), text: () => '“Walt Kowalski saw one of you? Walt? Walt can’t see his own feet. Still. Be nice to Walt.”' },

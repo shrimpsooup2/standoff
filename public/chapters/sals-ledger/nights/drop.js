@@ -73,7 +73,7 @@ export default {
   ],
   close(c) {
     c.remember(
-      `Shoppers at the Route 9 Shop-Rite reported ${c.memo.wrongCar ? 'a car alarm, then several more car alarms, then' : ''} a high-speed chase late on ${c.rng.pick(['what had been a quiet night', 'the night of the Feast'])}. Police found ${c.memo.lost ? 'a gym bag on the road with money in it, which they described as “unusual”' : 'nothing but tyre marks'}.`,
+      `Shoppers at the Route 9 Shop-Rite reported ${c.memo.wrongCar ? 'a car alarm, then several more car alarms, then ' : ''}a high-speed chase late on ${c.rng.pick(['what had been a quiet night', 'the night of the Feast'])}. Police found ${c.memo.lost ? 'a gym bag on the road with money in it, which they described as “unusual”' : 'nothing but tyre marks'}.`,
       { courier: 'CHASE THROUGH THE FEAST' },
     );
   },

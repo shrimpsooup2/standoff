@@ -13,6 +13,8 @@ import { COMPLICATIONS, POOLS } from './complications.js';
 import { milestoneNow } from './common.js';
 import { ending } from './ending.js';
 import { takeDeal } from './nights/the-room.js';
+import { dealBios, bioView } from './bios.js';
+import { MOMENT_BEAT, MOMENT_AT, AFTER_BEAT } from './moments.js';
 
 import prologue from './nights/prologue.js';
 import threeBanks from './nights/three-banks.js';
@@ -24,7 +26,16 @@ import { EXTRA_NIGHTS } from './nights/all.js';
 import castellanoNights from './nights/castellano.js';
 import raid from './nights/raid.js';
 
-const NIGHTS = Object.fromEntries([prologue, threeBanks, morning, twist, theRoom, nightBefore, trial, ...EXTRA_NIGHTS, ...castellanoNights, raid].map((n) => [n.id, n]));
+const NIGHTS = Object.fromEntries([prologue, threeBanks, morning, twist, theRoom, nightBefore, trial, ...EXTRA_NIGHTS, ...castellanoNights, raid].map((n) => {
+  // before the job starts, everybody gets twenty minutes to themselves; after
+  // the count, whoever made it back sits down at the table it started from
+  const at = MOMENT_AT[n.id];
+  if (at == null) return [n.id, n];
+  const beats = n.beats.slice();
+  beats.splice(at, 0, 'moments/before');
+  beats.push('moments/after');
+  return [n.id, { ...n, beats }];
+}));
 
 /** Every beat in the chapter by its global id: "night/beat". */
 const BEATS = {};
@@ -32,6 +43,8 @@ for (const night of Object.values(NIGHTS)) {
   for (const [id, def] of Object.entries(night.defs ?? {})) BEATS[`${night.id}/${id}`] = def;
 }
 for (const [id, def] of Object.entries(COMPLICATIONS)) BEATS[`complications/${id}`] = def;
+BEATS['moments/before'] = MOMENT_BEAT;
+BEATS['moments/after'] = AFTER_BEAT;
 
 /**
  * The slots in the week, and what can fill them. Each entry is a night id and
@@ -125,12 +138,13 @@ function setup(c) {
   c.s.deck = c.rng.shuffle(buildDeck());
   for (const p of c.players) c.g.draw(p.id, 2);
   dealSecrets(c, NIGHTS.ring ? ['ring'] : []);
+  dealBios(c);
 }
 
-/** What Morty wants: about $70k a head, less for a short week. */
+/** What Morty wants: about $80k a head (people earn during the day too), less for a short week. */
 function bagTarget(c, n) {
   const week = c.s.config.length === 'short' ? 0.6 : 1;
-  return round5k((70000 * n + 60000) * week);
+  return round5k((80000 * n + 60000) * week);
 }
 
 /** Seven to ten: two sides of the river. */
@@ -148,6 +162,7 @@ function setupFamilies(c) {
   c.s.deck = c.rng.shuffle(buildDeck());
   for (const p of c.players) c.g.draw(p.id, 2);
   dealFamilySecrets(c, NIGHTS.ring ? ['ring'] : []);
+  dealBios(c);
 }
 
 /** The act of whatever real night comes next, to know when an act has ended. */
@@ -223,6 +238,7 @@ export default {
   },
   nightNumber: (c, id) => (NIGHTS[id]?.interlude ? null : c.s.week.n),
   secretView: secretText,
+  bioView,
   milestone: (c) => ({ want: milestoneNow(c), act: c.s.scene?.act ?? 1 }),
   takeDeal,
   lockupTalk,

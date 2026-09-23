@@ -92,6 +92,48 @@ test('Sal always has something true to say, even on the last morning', () => {
   }
 });
 
+test('everybody says who they are before the first night, and nobody shares one', () => {
+  const { g, seen } = play({ n: 6, seed: 'who' });
+  assert.ok(seen.has('prologue/who'));
+  const bios = g.s.players.map((p) => p.bio);
+  assert.ok(bios.every(Boolean), 'everybody kept one');
+  assert.equal(new Set(bios).size, bios.length, 'no two people are the same person');
+  const v = g.view(g.s.players[0].id);
+  assert.ok(v.players.every((row) => typeof row.bio === 'string'), 'the table knows who everybody is');
+  assert.ok(v.you.bio?.text, 'and you can read your own');
+});
+
+test('a week has room in it: days, and time before and after each job', () => {
+  const { seen } = play({ n: 5, seed: 'slow' });
+  for (const id of ['morning/day', 'moments/before', 'moments/after']) assert.ok(seen.has(id), `${id} happened`);
+});
+
+test('what happens to you alone shows up on your own screen, and nobody else’s', () => {
+  const g = new Game({ code: 'TEST', seed: 'eyes' });
+  let t = 1_000_000;
+  g.clock = () => t;
+  g.addPlayer({ id: 'me', name: 'Andre' });
+  g.setConnected('me', true);
+  for (let i = 0; i < 4; i++) g.addBot();
+  g.setConfig({ clock: false });
+  g.start();
+  // play along until the twenty minutes are over and everybody is reading what came of them
+  for (let steps = 0; steps < 20000 && !(g.s.beat?.id === 'moments/before' && g.s.beat.stage === 'fallout'); steps++) {
+    const a = autoAction(g.view('me'));
+    if (a) g.act('me', a);
+    t += 700;
+    g.tick(t);
+  }
+  assert.equal(g.s.beat?.id, 'moments/before');
+  const views = g.s.players.map((p) => g.view(p.id));
+  const withNotes = views.filter((v) => v.beat.mine.length);
+  assert.ok(withNotes.length >= 3, 'the people who had a moment see what came of it');
+  for (const v of withNotes) {
+    const theirs = g.s.players.find((p) => p.id === v.you.id).notes.filter((n) => n.beat === g.s.beat.key).map((n) => n.text);
+    assert.deepEqual(v.beat.mine.map((n) => n.text), theirs, 'only their own');
+  }
+});
+
 test('the short game is four nights', () => {
   for (let r = 0; r < 6; r++) {
     const { g } = play({ n: 4, length: 'short', seed: `short-${r}` });
@@ -184,6 +226,18 @@ for (const n of [7, 8, 9, 10]) {
     }
   });
 }
+
+test('across the river, people are somebody to the Castellanos', () => {
+  const { g } = play({ n: 8, seed: 'fam-bios' });
+  const view = g.view(g.s.players[0].id);
+  for (const p of g.s.players) {
+    assert.ok(p.bio, `${p.name} said who they are`);
+    const row = view.players.find((r) => r.id === p.id);
+    assert.ok(row.bio, 'and everybody knows it');
+  }
+  const castellanos = g.s.players.filter((p) => g.s.families.of[p.id] === 'c');
+  assert.ok(castellanos.some((p) => ['vgodchild', 'bigcousin', 'shopgrand', 'ex'].includes(p.bio)) || castellanos.every((p) => p.bio), 'Castellanos draw from their own side');
+});
 
 test('a short Families week is four nights', () => {
   for (let r = 0; r < 3; r++) {

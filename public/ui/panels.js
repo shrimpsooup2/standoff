@@ -16,6 +16,7 @@ export function seats(state, { me }) {
     return `<div class="seat${p.id === me ? ' you' : ''}${p.jailed ? ' jailed' : ''}${!p.connected && !p.bot ? ' off' : ''}${fam}" title="${esc([p.family ? state.families?.names?.[p.family] : null, p.job].filter(Boolean).join(' · '))}">
       <div class="s-top"><span class="dot${p.pending ? ' live' : ''}"></span><span class="s-name">${esc(p.name)}</span>${p.grudgesAgainst ? `<span class="s-grudge" title="${p.grudgesAgainst} grudge${p.grudgesAgainst === 1 ? '' : 's'} held against them">${'✕'.repeat(Math.min(3, p.grudgesAgainst))}</span>` : ''}</div>
       <div class="s-job">${esc(p.job ?? '')}</div>
+      ${p.bio ? `<div class="s-bio">${esc(p.bio)}</div>` : ''}
       <div class="s-bottom">${worth}${heatPips(p.heat, p.jailed)}</div>
       ${p.stamps?.length ? `<div class="s-stamps">${p.stamps.map((w) => `<span class="stampmark">${esc(w)}</span>`).join('')}</div>` : ''}
       ${tags.length ? `<div class="s-tags">${tags.join('')}</div>` : ''}
@@ -175,6 +176,12 @@ export function dossier(state, ui) {
     if (you.cousin) abil.push('ready this week');
     if (you.freeWipe) abil.push('Father Dominic owes you one');
     sections.push(`<section class="d-sec"><span class="stamp">your job — everybody knows it</span><h3>${esc(you.job.name)}</h3><p>${esc(you.job.text)}</p>${abil.length ? `<p class="faint small">${esc(abil.join(' · '))}</p>` : ''}</section>`);
+  }
+  if (you.bio) {
+    sections.push(`<section class="d-sec"><span class="stamp">who you are — everybody knows it</span><h3>${esc(you.bio.name)}</h3><p>${esc(you.bio.text)}</p>${you.bio.who ? `<p class="faint small">Your person in this: ${esc(you.bio.who)}. Most mornings you can spend the day with them.</p>` : ''}</section>`);
+  }
+  if (you.edges?.length) {
+    sections.push(`<section class="d-sec"><span class="stamp">on your side tonight</span><p>${you.edges.map((e) => `+1 — ${esc(e)}`).join('<br>')}</p><p class="faint small">Each adds one to the next roll you’re part of.</p></section>`);
   }
   if (secret) {
     sections.push(`<section class="d-sec secret"><span class="stamp">your secret — nobody else knows it</span><h3>${esc(secret.name)}</h3><p>${esc(secret.text)}</p><p class="faint small">Pays ${esc(secret.payLabel ?? '')} on Monday.</p></section>`);

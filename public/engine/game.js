@@ -214,7 +214,7 @@ export class Game {
       connected: bot, wasHuman: !bot,
       job: null, secret: null, cards: [], cash: 0, stash: 0, heat: 0,
       jailUntil: null, lowUntil: null, arrests: 0, stamps: [], grudges: {},
-      deal: null, armed: {}, used: {}, notes: [], benchBeat: null,
+      deal: null, armed: {}, used: {}, notes: [], benchBeat: null, bio: null, edges: [],
       stats: { given: 0, grabbed: 0, lies: 0, doctored: 0, named: [], warned: [], seized: 0, heatTaken: 0 },
     };
     this.s.players.push(p);
@@ -393,7 +393,7 @@ export class Game {
     // mornings, the Room and the Trial are not nights: nobody's sentence
     // runs out over breakfast
     if (!def.interlude && !counted) w.n += 1;
-    this.s.night = { id: nightId, facts: [], memo: {}, earned: {}, n: w.n };
+    this.s.night = { id: nightId, facts: [], memo: {}, earned: {}, n: w.n, bagStart: this.s.bag.total, fileStart: this.s.caseFile, envStart: this.s.envelope?.total ?? 0 };
     // interludes belong to whichever act they sit in
     const act = slotAct ?? def.act ?? w.act ?? 0;
     if (slotAct ?? def.act) w.act = act;
@@ -571,12 +571,47 @@ export class Game {
     const rolled = [];
     for (let i = 0; i < dice; i++) rolled.push(this.dieFace(preset?.[i]));
     this.s.uid += 1;
+    const rollers = who ?? this.free().map((p) => p.id);
     b.window = {
-      id: this.s.uid, kind: 'roll', dice: rolled, n: dice, target, label, mods: [...mods], faces, noMuscle, clampFace,
-      who: who ?? this.free().map((p) => p.id), passed: [], plays: 0, then, meta,
+      id: this.s.uid, kind: 'roll', dice: rolled, n: dice, target, label, mods: [...mods, ...this.spendEdges(rollers, target, faces)], faces, noMuscle, clampFace,
+      who: rollers, passed: [], plays: 0, then, meta,
     };
     this.settleIfQuiet();
     this.bump();
+  }
+
+  /**
+   * Something earned during the day — a tune-up, a trick of Walt's — adds one
+   * to the next roll with a number to beat that its holder is part of. One
+   * edge to a roll: a whole crew's worth of luck doesn't stack.
+   */
+  spendEdges(ids, target, faces) {
+    if (target == null || faces) return [];
+    for (const id of ids) {
+      const p = this.getPlayer(id);
+      if (!p?.edges?.length || this.isAway(p)) continue;
+      const edge = p.edges.shift();
+      return [{ by: p.id, label: `${p.name}: ${edge.label}`, n: 1 }];
+    }
+    return [];
+  }
+
+  /**
+   * Something that is true about tonight, for a Snitch to ask about — and,
+   * once the night is over, for the neighbourhood to gossip about.
+   */
+  recordFact(f) {
+    if (!this.s.night) return;
+    this.s.night.facts.push(f);
+    (this.s.factLog ??= []).push({ ...f, nightId: this.s.night.id, n: this.s.week.n });
+    if (this.s.factLog.length > 80) this.s.factLog.splice(0, this.s.factLog.length - 80);
+  }
+
+  /** Something for one person's eyes, remembered with the beat it happened in. */
+  noteTo(pid, text, from = null, kind = null) {
+    const p = this.getPlayer(pid);
+    if (!p || !text) return;
+    p.notes.push({ from, text, night: this.s.week.i, beat: this.s.beat?.key ?? null, ...(kind ? { kind } : {}) });
   }
 
   /** One die, unless somebody loaded it. */
@@ -586,7 +621,7 @@ export class Game {
       loaded.armed.loaded = false;
       if (this.s.night) {
         this.s.night.memo.loadedBy = loaded.id;
-        this.s.night.facts.push({ about: loaded.id, key: 'loaded', q: `Did ${loaded.name} load a die tonight?`, a: true, night: this.s.week.i });
+        this.recordFact({ about: loaded.id, key: 'loaded', q: `Did ${loaded.name} load a die tonight?`, a: true, night: this.s.week.i });
       }
       return 5;
     }
@@ -996,7 +1031,7 @@ export class Game {
       const text = String(a.text ?? '').slice(0, 160).trim();
       if (!to || to.id === p.id || !text) return { error: 'Who, and what?' };
       p.used.jail.call = true;
-      to.notes.push({ from: p.name, text, night: this.s.week.i, kind: 'call' });
+      this.noteTo(to.id, text, p.name, 'call');
       return { ok: true };
     }
     if (a.what === 'deal') {
@@ -1009,7 +1044,7 @@ export class Game {
       if (p.used.jail.sal) return { error: 'Sal has said what he is going to say.' };
       p.used.jail.sal = true;
       const said = this.chapter.lockupTalk?.(this.ctx(), p.id) ?? 'Sal talks about tomatoes for forty minutes.';
-      p.notes.push({ from: 'Sal', text: said, night: this.s.week.i, kind: 'sal' });
+      this.noteTo(p.id, said, 'Sal', 'sal');
       return { ok: true };
     }
     return { error: 'Not in here.' };
@@ -1150,6 +1185,7 @@ export class Game {
       players: s.players.map((p) => ({
         id: p.id, name: p.name, bot: p.bot, connected: p.connected, isYou: p.id === pid,
         job: p.job ? this.chapter.jobs[p.job]?.name ?? p.job : null, jobId: p.job,
+        bio: p.bio ? this.chapter.bioView?.(c, p)?.name ?? null : null,
         cash: (open || p.id === pid) ? p.cash : null,
         band: open ? null : bands?.[p.id] ?? null,
         heat: p.heat, jailed: p.jailUntil != null && p.jailUntil >= s.week.n,
@@ -1187,6 +1223,8 @@ export class Game {
         low: me.lowUntil != null && me.lowUntil >= s.week.n,
         jailUsed: me.used.jail ?? {},
         notes: me.notes.slice(-12),
+        bio: me.bio ? this.chapter.bioView?.(c, me) ?? null : null,
+        edges: (me.edges ?? []).map((e) => e.label),
         offers: s.offers.filter((o) => o.to === me.id).map((o) => OFFER_VIEW(this, o)),
         sent: s.offers.filter((o) => o.from === me.id).map((o) => OFFER_VIEW(this, o)),
         rat: ['rat', 'turncoat'].includes(me.secret?.id) ? { kind: me.secret.id, wireUsed: me.used.wire === (this.s.scene?.act ?? 0), canWire: !!this.s.scene?.act && me.used.wire !== this.s.scene.act } : null,
@@ -1207,6 +1245,8 @@ export class Game {
         lines: b.lines, receipt: b.stage === 'fallout' ? b.receipt : null,
         headline: b.headline ?? null, dossier: typeof def.dossier === 'function' ? !!def.dossier(c, pid) : !!def.dossier, interlude: !!s.scene?.interlude,
         lastRoll: b.lastRoll ?? null,
+        mine: me ? me.notes.filter((n) => n.beat === b.key).map((n) => ({ from: n.from, text: n.text })) : [],
+        eyesOnly: s.players.filter((p) => !p.bot && p.notes.some((n) => n.beat === b.key)).map((p) => ({ id: p.id, name: p.name })),
         window: b.window ? this.windowView(b.window, pid) : null,
         ready: b.ready,
         waitingOn: [...waiting].map((id) => this.name(id)),
@@ -1380,11 +1420,11 @@ export class Context {
 
   line(text) { if (text) this.s.beat?.lines.push(text); }
   remember(text, extra) { this.g.remember(text, extra); }
-  note(pid, text, from = null) { this.p(pid)?.notes.push({ from, text, night: this.s.week.i }); }
+  note(pid, text, from = null) { this.g.noteTo(pid, text, from); }
 
   /** Something a Snitch can ask about tonight. */
   fact(about, key, q, a) {
-    this.s.night?.facts.push({ about, key, q, a: !!a, night: this.s.week.i });
+    this.g.recordFact({ about, key, q, a: !!a, night: this.s.week.i });
   }
 
   // -- money -----------------------------------------------------------
