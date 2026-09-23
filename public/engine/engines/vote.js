@@ -22,14 +22,25 @@ function assignFaces(options) {
   });
 }
 
-/** Faces for a tie, among the tied options only, keeping their own where possible. */
+/**
+ * Faces for a tie, among the tied options only. Everybody keeps the faces
+ * they already had, and the faces nobody has are shared out between them, so
+ * the die always lands on somebody.
+ */
 function tieFaces(options, tied) {
   const own = tied.map((id) => options.find((o) => o.id === id));
-  if (own.every((o) => o.faces?.length)) {
-    const covered = own.flatMap((o) => o.faces);
-    if (covered.length) return own.map((o) => ({ id: o.id, faces: o.faces }));
+  if (!own.every((o) => o.faces?.length)) return assignFaces(tied.map((id) => ({ id }))).map((o) => ({ id: o.id, faces: o.faces }));
+  const out = own.map((o) => ({ id: o.id, faces: [...o.faces] }));
+  const taken = new Set(out.flatMap((o) => o.faces));
+  let i = 0;
+  for (let face = 1; face <= 6; face++) {
+    if (taken.has(face)) continue;
+    // the spare faces go to whoever has fewest, so a tie stays a fair fight
+    const next = out.slice().sort((a, b) => a.faces.length - b.faces.length || out.indexOf(a) - out.indexOf(b))[0] ?? out[i++ % out.length];
+    next.faces.push(face);
   }
-  return assignFaces(tied.map((id) => ({ id }))).map((o) => ({ id: o.id, faces: o.faces }));
+  for (const o of out) o.faces.sort((a, b) => a - b);
+  return out;
 }
 
 function voters(g, b) {
@@ -88,7 +99,7 @@ function decide(g, b, def) {
     && top.includes(b.data.votes[p.id]));
   if (cousin && (cousin.bot || b.data.cousinAsk === true)) {
     cousin.used.cousin = true;
-    b.lines.push(`Tied. Nonna looks at ${cousin.name}, and that's the end of it.`);
+    b.lines.push(`Tied. ${cousin.name} is Nonna’s favourite, and everybody knows which way she’d settle it. That’s the end of it.`);
     return resolve(g, b, def, b.data.votes[cousin.id], { tie: true, nonna: cousin.id });
   }
 
@@ -246,7 +257,7 @@ export default {
       return rollTie(g, b);
     }
     const label = b.data.options.find((o) => o.id === hit.id)?.label ?? hit.id;
-    b.lines.unshift(`Tied. The die came up ${face}: ${label}.`);
+    b.lines.push(`Tied. The die came up ${face}: ${label}.`);
     return resolve(g, b, def, hit.id, { tie: true, die: face });
   },
 

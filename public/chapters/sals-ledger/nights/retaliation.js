@@ -1,6 +1,6 @@
 // The Retaliation: you robbed the Castellanos. The Castellanos noticed.
 
-import { counting, money, round5k, nightDay, nightKicker } from '../common.js';
+import { counting, money, round5k, nightDay, nightKicker, tablePays, howPaid } from '../common.js';
 import { crew, cut, grabbers, onPost } from '../heist.js';
 
 export default {
@@ -53,7 +53,7 @@ export default {
       ],
       options: (c) => [
         { id: 'hit', label: 'Hit them back', blurb: 'The Castellanos run a card room above a laundromat on Front Street. Tonight it’s full.', risk: 0.8, reward: 0.9, details: ['A heist, then a getaway.', 'The war goes on.'] },
-        { id: 'pay', label: 'Pay them', blurb: `${money(c.scale(40000))} out of the Bag, delivered by hand, with an apology. It ends here.`, risk: 0.1, reward: 0.2, details: ['The war ends.'] },
+        { id: 'pay', label: 'Pay them', blurb: `${money(c.scale(40000))} out of the Bag — or your pockets, if the Bag can’t — delivered by hand, with an apology. It ends here.`, risk: 0.1, reward: 0.2, details: ['The war ends, if the money’s right.'] },
         { id: 'nonna', label: 'Let Nonna handle it', blurb: 'Nonna makes one phone call. Nobody knows who to.', risk: 0.5, reward: 0.5, details: [`A roll. ${c.byJob('cousin') ? `${c.byJob('cousin').name} dials for her: a little easier.` : 'Somebody has to dial for her.'}`] },
       ],
       angles(c) {
@@ -71,8 +71,10 @@ export default {
         c.memo.answer = choice;
         c.line({
           hit: 'Nonna nods once and goes to get her coat. Then she remembers she’s ninety-four and sends you instead.',
-          pay: 'Nonna counts out the money herself. She counts it slowly, so everybody can see what it costs.',
-          nonna: 'Nonna picks up the phone, dials a number from memory, and says, “It’s me.” Then she waits.',
+          pay: c.bag.total >= c.scale(40000)
+            ? 'Nonna counts out the money herself. She counts it slowly, so everybody can see what it costs.'
+            : `Nonna opens the Bag and counts what’s there: ${money(c.bag.total)}. She looks round the table. The rest will have to come out of pockets.`,
+          nonna: 'Nonna goes to the phone on the wall and stops with her hand on it. “First,” she says, “I want to know whose hand it was.”',
         }[choice]);
       },
     },
@@ -127,7 +129,7 @@ export default {
       },
     },
 
-    cut: cut({ time: '12:05 A.M.', place: 'A car with the lights off, under the bridge' }),
+    cut: cut({ time: '12:05 A.M.', place: (c) => (c.memo.carLost ? 'Under the bridge, on foot, out of breath' : 'A car with the lights off, under the bridge') }),
 
     sitdown: {
       engine: 'whispers', time: '10:15 P.M.', place: 'The back booth at Dolores’s', title: 'The Sit-Down', kicker: 'ONE OF YOU TALKS',
@@ -154,11 +156,12 @@ export default {
           no: 'The credit union was Vinnie’s father’s. It isn’t business. It’s personal.' },
       ],
       filler: () => ['Vinnie always sits facing the door.', 'Vinnie takes his coffee black, and never drinks it.', 'Vinnie wears a cardigan over a shirt and tie, every day, in every weather.'],
-      resolve(c, { success, openingLabel, talker }) {
+      resolve(c, { success, opening, talker }) {
+        const did = { father: 'talked about Vinnie’s father', daughter: 'asked after Rosemarie', apology: 'apologised first, properly', business: 'called the credit union a business mistake' }[opening] ?? 'said something';
         c.memo.priceMult = success ? 0.6 : 1.3;
         c.line(success
-          ? `${c.name(talker)} tried ${openingLabel.toLowerCase()}. Vinnie listened, and stirred his coffee, and named a number a good deal lower than Nonna’s.`
-          : `${c.name(talker)} tried ${openingLabel.toLowerCase()}. Vinnie put his spoon down very carefully and named a number a good deal higher than Nonna’s.`);
+          ? `${c.name(talker)} ${did}. Vinnie listened, and stirred his coffee, and named a number a good deal lower than Nonna’s.`
+          : `${c.name(talker)} ${did}. Vinnie put his spoon down very carefully and named a number a good deal higher than Nonna’s.`);
       },
     },
 
@@ -176,9 +179,16 @@ export default {
     'eleven-steps': {
       engine: 'choose', time: '10:28 P.M.', place: 'Dolores’s, between the counter and the back booth', title: 'Eleven Steps', kicker: 'NOBODY SEES',
       who: (c) => [c.memo.carrier].filter((id) => id && !c.isAway(id)),
-      enter(c) { c.memo.boxed = c.bagTake(round5k(c.scale(40000) * (c.memo.priceMult ?? 1))); },
+      enter(c) {
+        const want = round5k(c.scale(40000) * (c.memo.priceMult ?? 1));
+        const paid = tablePays(c, want);
+        if (paid.ok) { c.memo.boxed = paid.paid; c.memo.boxHow = howPaid(paid); return; }
+        // there isn't enough: the box holds whatever the Bag has, and it's short
+        c.memo.boxed = c.bagTake(want);
+        c.memo.boxShort = want - c.memo.boxed;
+      },
       text: (c) => [
-        `${c.name(c.memo.carrier)} has the cake box: ${money(c.memo.boxed ?? 0)}, tied with bakery string. It is eleven steps from the counter to Vinnie’s booth, past the ladies’ room door and the payphone, and for about four of them nobody at either table can see the box.`,
+        `${c.name(c.memo.carrier)} has the cake box: ${money(c.memo.boxed ?? 0)}, tied with bakery string${c.memo.boxShort ? ` — ${money(c.memo.boxShort)} less than Vinnie’s number, because that is all there is` : c.memo.boxHow ? ` (${c.memo.boxHow})` : ''}. It is eleven steps from the counter to Vinnie’s booth, past the ladies’ room door and the payphone, and for about four of them nobody at either table can see the box.`,
         `${c.name(c.memo.carrier)} decides what’s in it when it gets there. Nobody else sees.`,
       ],
       options: (c, pid) => [
@@ -227,7 +237,7 @@ export default {
         if (r.success) {
           c.memo.thrower = c.rng.pick(['Richie Castellano, Vinnie’s nephew, nineteen', 'a Castellano cousin called Sonny who works at the car wash', 'Jumbo, from the card room, who had to be helped into the Pontiac']);
           c.memo.callMod = -1;
-          c.line(`${c.freeByJob('driver')?.name ?? 'Somebody'} boxes the Pontiac in at the light on Canal. Behind the wheel: ${c.memo.thrower}, who says a lot of things very fast. Nonna will have a name to say on the phone.`);
+          c.line(`${c.freeByJob('driver')?.name ?? 'Somebody'} boxes the Pontiac in at the light on Canal. Behind the wheel is ${c.memo.thrower}. Once he’s out of the car, he says a lot of things very fast. Nonna will have a name to say on the phone.`);
           return;
         }
         const d = c.freeByJob('driver');
@@ -258,8 +268,15 @@ export default {
           c.line('Nonna calls back and says she will be sending nothing. There is a long silence. Then somebody on the other end laughs. “Same old Nonna,” they say.');
           return;
         }
-        const n = c.bagTake(c.scale(15000));
-        if (choice === 'money') { c.line(`${money(n)} goes to a Castellano christening in an envelope with Nonna’s handwriting on it. Nobody goes to the church.`); return; }
+        const paid = tablePays(c, c.scale(15000));
+        if (!paid.ok) {
+          const war = c.rng.chance(0.5);
+          if (war) { c.set('war', true); c.set('truce', null); }
+          c.line(`Between the Bag and everybody’s pockets there’s ${money(paid.had)}, which is not what Nonna promised. She calls back and says so, in Sicilian.${war ? ' Nobody answers. The war is back on.' : ' Whoever is on the other end laughs. “Next month, then,” they say.'}`);
+          return;
+        }
+        const n = paid.paid;
+        if (choice === 'money') { c.line(`${howPaid(paid)}, to a Castellano christening, in an envelope with Nonna’s handwriting on it. Nobody goes to the church.`); return; }
         const voters = Object.entries(votes).filter(([, v]) => v === 'keep').map(([pid]) => pid);
         const suit = c.p(c.rng.pick(voters.length ? voters : c.free.map((p) => p.id)));
         if (suit) {
@@ -273,7 +290,7 @@ export default {
 
     favour: {
       engine: 'vote', time: '10:50 P.M.', place: 'The back booth at Dolores’s', title: 'One More Thing', kicker: 'A VOTE',
-      text: () => ['Vinnie closes the cake box, puts his hand on it, and doesn’t let go. “One more thing,” he says, “so we both remember this.”', 'What do you give him?'],
+      text: () => ['Before anybody can stand up, Vinnie puts his hand flat on the lid of the cake box and leaves it there. “One more thing,” he says, “so we both remember this.”', 'What do you give him?'],
       options: () => [
         { id: 'package', label: 'Carry a package for him tomorrow', blurb: 'One of you, an address in Bensonhurst, no questions. It pays. It’s also a package.', risk: 0.5, reward: 0.4 },
         { id: 'sunday', label: 'Invite him to Nonna’s for Sunday dinner', blurb: 'The whole family, both sides, at one table. Nobody has done that since 1987.', risk: 0.3, reward: 0.6 },
@@ -348,6 +365,7 @@ export default {
 
     'card-room': {
       engine: 'grab', time: '11:30 P.M.', place: 'Above the Sunshine Laundromat, Front Street', title: 'The Card Room', kicker: 'HOW GREEDY ARE YOU?',
+      carCaught: (c, n) => `${n} was still in the alley with the engine running. Jumbo leaned out of the back window and read the plate out loud.`,
       text(c) {
         const d = c.freeByJob('driver');
         return [
@@ -377,16 +395,22 @@ export default {
       stakes: 'Miss it and the Castellanos get a plate number, and everybody takes one heat.',
       resolve(c, r) {
         if (r.success) { c.line('Down the alley, across Front Street against the light, and gone.'); return; }
+        c.memo.carLost = true;
         c.line('Down the alley and straight into a garbage truck. Everybody got out and ran. The Castellanos have the car.');
         for (const p of c.free) c.heat(p.id, 1, 'the alley');
       },
     },
 
     tribute: {
-      engine: 'story', time: '10:30 P.M.', place: 'The back room at Dolores’s', title: 'The Apology', kicker: 'THE CASTELLANOS',
+      engine: 'story', time: '10:30 P.M.', place: 'The back booth at Dolores’s', title: 'The Apology', kicker: 'THE CASTELLANOS',
       run(c) {
-        const n = c.memo.boxed ?? c.bagTake(round5k(c.scale(40000) * (c.memo.priceMult ?? 1)));
+        const n = c.memo.boxed ?? 0;
         const m = c.memo.carrier ?? c.memo.messenger;
+        if (c.memo.boxShort && !c.memo.sweetened) {
+          c.set('war', true);
+          c.line(`Vinnie unties the string and counts it, slowly, in front of everybody. ${money(n)}. He puts the lid back on. “Tell your grandmother,” he says, “that I know what she can afford, and this isn’t it.” The war is still on.`);
+          return;
+        }
         if (c.memo.skimmed && c.rng.chance(c.memo.priceMult < 1 ? 0.35 : 0.6)) {
           c.set('war', true);
           c.line(`Vinnie opens the cake box and counts it, which he never does. Twice. Then he closes the lid, looks at ${c.name(m)}, and says, “Tell your grandmother it was short.” The war is still on.`);
@@ -400,9 +424,9 @@ export default {
         c.set('truce', 'accept');
         if (m && !c.isAway(m)) { c.give(m, 10000, 'Vinnie’s tip'); c.note(m, 'Vinnie tipped you $10k for carrying it over. Nobody else knows.', 'Vinnie Castellano'); }
         if (c.memo.sweetened) c.caseFile(-1, 'Vinnie found more in the box than he asked for, and told Prout to go to hell');
-        c.line(`${money(n)} out of the Bag, in a cake box, across the table at Dolores’s. Vinnie opened it, closed it, and shook hands. It’s over. Probably.`);
+        c.line(`Vinnie opens the cake box, looks at the ${money(n)} inside without counting it, closes it again, and shakes hands with ${m ? c.name(m) : 'whoever carried it'}. It’s over. Probably.`);
       },
-      text: () => ['Vinnie Castellano is waiting in the back booth at Dolores’s, with a cup of coffee he hasn’t touched. The money goes over in a cake box from the Italian bakery on Fifth, because Nonna insisted it be done properly.'],
+      text: (c) => [`${c.name(c.memo.carrier ?? c.memo.messenger ?? c.free[0]?.id)} puts the cake box down on the table in front of Vinnie. Dolores has stopped pretending to wipe the counter. Vinnie unties the bakery string himself.`],
     },
 
     'nonna-calls': {

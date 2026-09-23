@@ -1,7 +1,7 @@
 // The Motel: Gary Feld, the accountant, the only other man alive who has read
 // the ledger, is somewhere in the Route 9 Motor Inn.
 
-import { counting, money, round5k, nightDay, nightKicker } from '../common.js';
+import { counting, money, round5k, nightDay, nightKicker, tablePays, howPaid } from '../common.js';
 
 const ROOMS = [
   { id: 'r14', label: 'Room 14',
@@ -34,11 +34,12 @@ export default {
   beats: [
     'clerk',
     'desk',
-    { maybe: 'street', chance: 0.2 },
+    { maybe: ['patrol', 'photographer', 'dog'], chance: 0.2, where: 'The breezeway, Route 9 Motor Inn' },
     'gary',
     { if: (c) => c.memo.garyChoice === 'talk', then: 'talk-him-down' },
     { if: (c) => c.flag('gary') !== 'prout', then: 'suitcase' },
-    { oneOf: [{ beat: ['headlights', 'stall'], weight: 2 }, { beat: 'the-ice-machine', weight: 1 }] },
+    // leave Gary for Prout and Prout's people come for him while you're still in the building
+    { if: (c) => c.flag('gary') === 'prout', then: ['headlights', 'stall'], else: { oneOf: [{ beat: ['headlights', 'stall'], weight: 2 }, { beat: 'the-ice-machine', weight: 1 }] } },
     'count',
   ],
   close(c) {
@@ -127,13 +128,19 @@ export default {
     },
 
     desk: {
-      engine: 'whispers', time: '11:50 P.M.', place: 'The front desk, Route 9 Motor Inn', title: 'The Desk', kicker: 'WHICH ROOM?',
+      engine: 'whispers', time: '11:50 P.M.', place: 'The breezeway, Route 9 Motor Inn', title: 'Which Door', kicker: 'WHICH ROOM?',
       whoLabel: 'Which door is Gary behind?',
       text: (c) => {
         const t = c.freeByJob('talker')?.name ?? 'Somebody';
         return [
-          `Gary Feld has been in the Route 9 Motor Inn since Monday, eating from the vending machine and deciding whom to trust. ${c.rng.pick(['The night clerk will not say which room. She has been paid not to, by somebody.', 'The register says “John Smith” four times. The clerk shrugs.'])}`,
-          `${t} has to knock on one door. Knock on the wrong one and the whole motel wakes up. Everybody else knows one thing about one of the rooms.`,
+          `Gary Feld has been in the Route 9 Motor Inn since Monday, eating from the vending machine and deciding whom to trust. ${c.memo.clerkPaid
+            ? `Bernadette took the money and said, to her word search, one door it isn’t. ${t} knows which.`
+            : c.memo.clerkTalked
+              ? `While Bernadette talked about her word search, somebody read the register upside down: four “John Smith”s, and one of them paid for a room Gary would never take. ${t} knows which.`
+              : c.memo.clerkAngry
+                ? 'Behind the glass, Bernadette is still holding the phone where everybody can see it. The register is closed.'
+                : 'You walked past the office like guests, so the register stays a mystery: four “John Smith”s, and no way of knowing which.'}`,
+          `Out along the breezeway, ${t} has to knock on one door. Knock on the wrong one and the whole motel wakes up. Everybody else knows one thing about one of the rooms.`,
         ];
       },
       openings: () => ROOMS,
@@ -165,7 +172,7 @@ export default {
       ],
       options: (c) => [
         { id: 'basement', label: 'Nonna’s basement', blurb: 'Hide him until Monday. He eats $10k of groceries out of the Bag every night, and he is not a patient man.', risk: 0.4, reward: 0.5 },
-        { id: 'pay', label: 'Pay him to disappear', blurb: `${money(c.scale(50000))} out of the Bag and a bus ticket to Arizona. He never testifies.`, risk: 0.1, reward: 0.4 },
+        { id: 'pay', label: 'Pay him to disappear', blurb: `${money(c.scale(50000))} out of the Bag, or your pockets if the Bag can’t, and a bus ticket to Arizona. He never testifies.`, risk: 0.1, reward: 0.4 },
         { id: 'talk', label: 'Talk him round', blurb: 'Convince him to go home and keep quiet. Free, if it works. If it doesn’t, he walks straight to Prout.', risk: 0.6, reward: 0.6 },
         { id: 'leave', label: 'Leave him', blurb: 'Walk out. Whatever Gary does next, it isn’t your problem. It will be.', risk: 0.9, reward: 0.1 },
       ],
@@ -191,9 +198,16 @@ export default {
           return;
         }
         if (choice === 'pay') {
-          const n = c.bagTake(c.scale(50000));
+          const paid = tablePays(c, c.scale(50000));
+          if (!paid.ok) {
+            // not enough to start a new life on: you'll have to talk him round instead
+            c.memo.garyChoice = 'talk';
+            c.line(`Between the Bag and everybody’s pockets there’s ${money(paid.had)}. Gary counts it with his lips moving and pushes it back. “That’s not Arizona,” he says. “That’s New Jersey.” Now somebody has to talk him round.`);
+            return;
+          }
+          const n = paid.paid;
           c.set('gary', 'arizona');
-          c.line(`${money(n)} out of the Bag, counted onto the motel bed. Gary cries a little. He’s on the 6 a.m. bus to Phoenix.`);
+          c.line(`${howPaid(paid)}, counted onto the motel bed. Gary cries a little. He’s on the 6 a.m. bus to Phoenix.`);
           const o = c.memo.garyOwes;
           if (o && !c.isAway(o)) { const back = Math.min(20000, n); c.give(o, back, 'Gary’s old debt'); c.note(o, `On the way out Gary pressed ${money(back)} into your hand. “2016,” he said. “We’re square.”`, 'Gary Feld'); }
           return;
@@ -233,7 +247,7 @@ export default {
     headlights: {
       engine: 'vote', time: '12:50 A.M.', place: 'The parking lot, Route 9 Motor Inn', title: 'Headlights', kicker: 'WHO STAYS BEHIND?',
       text: (c) => [
-        `Headlights swing into the lot: ${c.flag('war') ? 'a black Lincoln with Castellano plates' : 'an unmarked Crown Victoria, Prout’s people'}. They’re here for Gary too. Somebody has to stay behind and stall them while everybody else gets out the back.`,
+        `Headlights swing into the lot: ${c.flag('war') ? 'a black Lincoln with Castellano plates' : 'an unmarked Crown Victoria, Prout’s people'}. ${c.flag('gary') === 'prout' && !c.flag('war') ? 'Gary must have called them himself, the minute you said you were leaving.' : 'They’re here for Gary too.'} Somebody has to stay behind and stall them while everybody else gets out the back.`,
         'Pick who stays. Everybody sees who picked who. Whoever stays rolls for it.',
       ],
       candidates: (c) => c.free.map((p) => p.id),

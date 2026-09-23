@@ -145,6 +145,8 @@ Across the river, in the Families game, the Castellanos get their own nights at 
 
 Every job is five or six decisions, and each one is made from the job's own scene: who's on the door, who's in the car, what happens when the alarm goes. What happens at one decides what the next one is: a clean door makes the witness easier, a wrong car puts the Lincolns on your bumper, and the name you give Nonna decides whether the rest of the night is a punishment or a trap.
 
+The next beat always picks up from how the last one went, not just whether it worked. Tell Nicky that Tina's outside and he runs off up Front Street, leaving the vault key on the desk; tell him Uncle Vinnie sent you and he wants to help. Whoever sat with Walt gets a say in the Cut, because they gave up the vault too. Anything the table pays for comes out of the Bag first and everybody's pockets second, and if there still isn't enough, it doesn't happen — Vinnie counts a short cake box, the counter doesn't look away. Complications happen where the night is and when it is: a cleaner inside, a jammed door on the way out, a patrol car on the street.
+
 ### How the story remembers
 
 The week keeps a notebook. Every scene reads it and writes to it.

@@ -15,7 +15,7 @@ export default {
   beats: [
     'envelope',
     'table-nine',
-    { maybe: 'wedding', chance: 0.4 },
+    { maybe: 'wedding', chance: 0.4, where: (c) => `${c.memo.hall ?? 'the hall'}, between courses` },
     'offer',
     'toast-pick',
     'toast',

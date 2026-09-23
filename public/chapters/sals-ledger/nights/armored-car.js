@@ -18,7 +18,7 @@ export default {
     'paulie',
     'seven-things',
     'guard',
-    { maybe: 'street', chance: 0.2 },
+    { maybe: ['patrol', 'mancuso'], chance: 0.2, where: 'Leaving with the bank bags' },
     'river',
     'ferry-street',
     'count',
@@ -93,13 +93,14 @@ export default {
         'Paulie tips exactly fifteen per cent and works it out on a napkin.',
         'Paulie has a picture of a boat in his wallet. He has never owned a boat.',
       ],
-      resolve(c, { success, openingLabel, talker }) {
+      resolve(c, { success, opening, talker }) {
+        const did = { mets: 'asked him about the Mets', ex: 'asked him how the divorce was going', brinks: 'complained about Brinks', cruller: 'bought him a cruller' }[opening] ?? 'said something';
         c.memo.paulie = !!success;
         if (success) {
-          c.line(`${c.name(talker)} opened with ${openingLabel.toLowerCase()}. An hour later Paulie has told them which guard has the bad knee, which lights run long on the route, and what time the radio check is. The job gets two easier.`);
+          c.line(`${c.name(talker)} ${did}. An hour later Paulie has told them which guard has the bad knee, which lights run long on the route, and what time the radio check is. The job gets two easier.`);
           return;
         }
-        c.line(`${c.name(talker)} opened with ${openingLabel.toLowerCase()}. Paulie looked at them for a long time, paid for his coffee, and said, “Do I know you?” He will remember the face. The job gets harder.`);
+        c.line(`${c.name(talker)} ${did}. Paulie looked at them for a long time, paid for his coffee, and said, “Do I know you?” He will remember the face. The job gets harder.`);
         c.heat(talker, 1, 'Paulie Ianucci’s good memory');
       },
     },
@@ -148,7 +149,7 @@ export default {
     'seven-things': {
       engine: 'plan', time: '4:05 A.M.', place: (c) => site(c).label, title: 'Seven Things', kicker: 'EVERYBODY PULLS THEIR WEIGHT',
       text: (c) => [
-        `Seven things have to go right: the radio, the traffic, the ${c.flag('armoredSite') === 'dolores' ? 'cruller' : 'lights'}, the guard on the left, the guard on the right, the lock, and nobody sneezing. Everybody has a part.`,
+        `${c.memo.paulie === true ? 'Paulie is riding on the left, the way he said he would, and he told you everything about the route last night over coffee. One of the seven is already half right.' : c.memo.paulie === false ? 'Paulie is riding on the left, and he is looking out of the window for a face he saw at Dolores’s last night.' : ''} Seven things have to go right: the radio, the traffic, the ${c.flag('armoredSite') === 'dolores' ? 'cruller' : 'lights'}, the guard on the left, the guard on the right, the lock, and nobody sneezing. Everybody has a part.`.trim(),
         'Help (equipment, a van, a scanner: $10k), coast, or quietly make one of the seven go wrong. Nobody sees who did what.',
       ],
       target: (c) => c.free.length + 5 + site(c).target - (c.flag('armoredSite') === 'depot' && c.memo.inLaw && !c.isAway(c.memo.inLaw) ? 2 : 0) + (c.memo.paulie === true ? -2 : c.memo.paulie === false ? 1 : 0),
@@ -212,7 +213,7 @@ export default {
 
     'ferry-street': getaway({
       time: '4:55 A.M.', place: 'Ferry Street, with the sun coming up',
-      text: (c) => [`${c.freeByJob('driver')?.name ?? 'Somebody'} takes Ferry Street at seventy. ${c.rng.pick(['The bakeries are opening.', 'A garbage truck is backing out of an alley.', 'There is a man walking a very small dog in the exact middle of the road.'])}`],
+      text: (c) => [`Off Pier 12${c.memo.river ? ' with empty hands and wet sleeves' : ', with the gym bag on the back seat'}. ${c.memo.sevenOk === false || (c.memo.getawayMod ?? 0) > 0 ? 'Every patrol car in the precinct has the truck’s street name by now, and some of them have your plate.' : 'Nobody has called anything in yet.'} ${c.freeByJob('driver')?.name ?? 'Somebody'} takes Ferry Street at seventy. ${c.rng.pick(['The bakeries are opening.', 'A garbage truck is backing out of an alley.', 'There is a man walking a very small dog in the exact middle of the road.'])}`],
       target: (c) => site(c).getaway + (c.memo.getawayMod ?? 0),
       who: (c) => c.free.map((p) => p.id).filter((id) => !(c.flag('armoredSite') === 'bridge' && id === c.memo.towCousin)),
     }),

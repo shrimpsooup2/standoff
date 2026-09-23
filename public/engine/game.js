@@ -474,7 +474,9 @@ export class Game {
     }
     if (entry.if) return entry.if(c) ? this.expand(entry.then, c, def, sub('then')) : this.expand(entry.else, c, def, sub('else'));
     if (entry.maybe) {
-      // a complication: sometimes the night has other plans
+      // a complication: sometimes the night has other plans. It happens where
+      // the night is and when it is, not somewhere generic.
+      if (entry.when && !entry.when(c)) return [];
       const chance = typeof entry.chance === 'function' ? entry.chance(c) : entry.chance ?? 0.35;
       if (!this.rng.chance(chance)) return [];
       const pool = this.chapter.complications(entry.maybe, c)
@@ -482,6 +484,12 @@ export class Game {
       if (!pool.length) return [];
       const pick = this.rng.pick(pool);
       this.s.usedComplications.push(pick.id);
+      if (this.s.night?.memo) {
+        this.s.night.memo.aside = {
+          where: typeof entry.where === 'function' ? entry.where(c) : entry.where ?? this.s.scene?.lastPlace ?? null,
+          time: typeof entry.at === 'function' ? entry.at(c) : entry.at ?? this.s.scene?.lastTime ?? null,
+        };
+      }
       return [pick.id];
     }
     if (entry.beat) return (!entry.when || entry.when(c)) ? this.expand(entry.beat, c, def, sub('beat')) : [];
@@ -529,20 +537,26 @@ export class Game {
     const engine = ENGINES[def.engine];
     if (!engine) throw new Error(`no engine ${def.engine}`);
     const c = this.ctx();
-    this.s.beat = {
+    const b = {
       key: `${this.s.week.i}:${id}:${this.s.scene.done.length}`,
       id, engine: def.engine, stage: null, data: {}, inputs: {}, ready: [],
       lines: [], receipt: null, window: null, deadline: null,
-      time: typeof def.time === 'function' ? def.time(c) : def.time ?? null,
-      place: typeof def.place === 'function' ? def.place(c) : def.place ?? null,
-      title: typeof def.title === 'function' ? def.title(c) : def.title ?? '',
-      kicker: typeof def.kicker === 'function' ? def.kicker(c) : def.kicker ?? engine.kicker ?? null,
-      text: textOf(def.text, c),
+      time: null, place: null, title: '', kicker: null, text: [],
     };
+    this.s.beat = b;
     this.s.scene.done.push(id);
-    for (const p of this.s.players) if (p.benchNext) { p.benchNext = false; p.benchBeat = this.s.beat.key; }
+    for (const p of this.s.players) if (p.benchNext) { p.benchNext = false; p.benchBeat = b.key; }
+    // whatever a beat sets up for itself is in place before a word of it is written
     def.enter?.(c);
-    engine.start(this, this.s.beat, def);
+    b.time = typeof def.time === 'function' ? def.time(c) : def.time ?? null;
+    b.place = typeof def.place === 'function' ? def.place(c) : def.place ?? null;
+    b.title = typeof def.title === 'function' ? def.title(c) : def.title ?? '';
+    b.kicker = typeof def.kicker === 'function' ? def.kicker(c) : def.kicker ?? engine.kicker ?? null;
+    b.text = textOf(def.text, c);
+    // the night remembers where and when it last was, for whatever interrupts it
+    if (b.time) this.s.scene.lastTime = b.time;
+    if (b.place) this.s.scene.lastPlace = b.place;
+    engine.start(this, b, def);
     this.bump();
   }
 

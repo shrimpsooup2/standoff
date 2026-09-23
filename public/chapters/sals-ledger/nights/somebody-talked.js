@@ -244,7 +244,7 @@ export default {
           const n = c.charge(t.id, c.scale(20000));
           c.bagAdd(n);
           c.stamp(t.id, 'RAT');
-          c.line(`${t.name}. Nonna looks at ${t.name}, and ${t.name} can’t hold it. They ${guilty[0]}. ${money(n)} goes in the Bag.`);
+          c.line(`${t.name}. Nonna looks at ${t.name}, and ${t.name} can’t hold it: ${t.name} ${guilty[0]}. ${money(n)} of ${t.name}’s goes in the Bag.`);
           c.caseFile(-1, 'Nonna put a stop to it');
           for (const pid of pointers) c.g.bond(pid, t.id, 'caught');
           return;
@@ -252,7 +252,9 @@ export default {
         c.memo.wrong = choice;
         const pay = c.bagTake(15000);
         c.give(t.id, pay, 'Nonna');
-        c.line(`${t.name}. Nonna looks at ${t.name} for a long time. Then she opens the Bag and gives them ${money(pay)}. “For the insult,” she says. It wasn’t ${t.name}.`);
+        c.line(pay
+          ? `${t.name}. Nonna looks at ${t.name} for a long time. Then she opens the Bag and gives them ${money(pay)}. “For the insult,” she says. It wasn’t ${t.name}.`
+          : `${t.name}. Nonna looks at ${t.name} for a long time. The Bag is empty, so she takes the rosary from round her own neck and puts it in ${t.name}’s hand. “For the insult,” she says. It wasn’t ${t.name}.`);
         for (const pid of pointers) if (pid !== t.id) c.grudge(t.id, pid, 'pointed at you in Nonna’s kitchen');
       },
     },
@@ -275,7 +277,9 @@ export default {
         if (choice === 'cut') {
           const n = c.charge(t.id, Math.max(0, t.cash - 5000));
           c.bagAdd(n);
-          c.line(`${money(n)} goes out of ${t.name}’s pockets and into the Bag. Nonna gives them five dollars for the bus.`);
+          c.line(n
+            ? `${money(n)} goes out of ${t.name}’s pockets and into the Bag. Nonna gives them five dollars for the bus.`
+            : `${t.name} turns out their pockets: lint, a bus transfer, a button. There’s nothing to take. Nonna gives them five dollars for the bus anyway, which is worse.`);
           for (const [pid, v] of Object.entries(votes)) if (v === 'cut') c.grudge(t.id, pid, 'emptied your pockets into the Bag');
           return;
         }
@@ -322,6 +326,7 @@ export default {
           c.caseFile(1, `${c.name(pid)} sold Nonna’s story`, true);
         }
         const printed = sold.filter(() => c.rng.chance(0.6));
+        c.memo.printed = printed;
         if (!printed.length) {
           c.line(sold.length
             ? 'Thursday’s Courier has nothing about the Bag in it. Nonna reads every page anyway, including the obituaries. Whatever Prout bought, he’s sitting on it.'
@@ -361,7 +366,7 @@ export default {
     'ray-knows': {
       engine: 'choose', time: '10:00 P.M.', place: 'A payphone on Ferry Street', title: 'Ray Knows Who', kicker: 'YOUR CALL',
       text: (c) => [
-        `Ray Mancuso calls each of you, one at a time, from a payphone. He knows who talked to Prout this week — he saw the visitor log. He’ll tell you for ${money(15000)}. Or you can tell him not to tell anybody else, for ${money(15000)}.`,
+        `Ray Mancuso calls each of you, one at a time, from a payphone. ${c.memo.guilty || c.memo.printed?.length ? `He heard about ${c.name(c.memo.guilty ?? c.memo.printed[0])}. He says the visitor log at Prout’s office has more than one name on it this week.` : 'He knows who talked to Prout this week — he saw the visitor log.'} He’ll tell you a name for ${money(15000)}. Or you can pay him not to tell anybody else about you, for ${money(15000)}.`,
         'Nobody sees what you do.',
       ],
       who: (c) => c.free.map((p) => p.id),

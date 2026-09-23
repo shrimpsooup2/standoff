@@ -4,16 +4,16 @@
 import { counting, money, nightDay, nightKicker } from '../common.js';
 
 const DOMINIC = [
-  { id: 'confess', label: 'Confess something real first.',
+  { id: 'confess', label: 'Confess something real first.', did: 'confessed something real first',
     yes: 'Father Dominic only helps people who confess something true first. He can always tell.',
     no: 'Father Dominic has heard enough real confessions this week to last him till Easter. He wants to talk about anything else.' },
-  { id: 'roof', label: '“We’re here about the roof fund, Father.”',
+  { id: 'roof', label: '“We’re here about the roof fund, Father.”', did: 'said they were there about the roof fund',
     yes: 'The roof of St. Anthony’s leaks onto the altar. Dominic has begged for the roof fund every Sunday since Lent.',
     no: 'The Castellanos paid for the roof in March. Dominic is sick of being reminded who paid for the roof.' },
-  { id: 'aldo', label: '“How’s your brother, Father? Aldo, in Palermo?”',
+  { id: 'aldo', label: '“How’s your brother, Father? Aldo, in Palermo?”', did: 'asked after his brother Aldo, in Palermo',
     yes: 'Dominic’s brother Aldo in Palermo is very ill. Dominic loves anybody who remembers to ask.',
     no: 'Dominic and his brother Aldo haven’t spoken since a funeral in 1983. Don’t mention Aldo.' },
-  { id: 'scripture', label: 'Quote scripture at him.',
+  { id: 'scripture', label: 'Quote scripture at him.', did: 'quoted scripture at him',
     yes: 'Dominic can’t resist a quotation. He finishes it for you, and then he’s yours.',
     no: 'Dominic says the devil can cite scripture, and he says it every time anybody tries.' },
 ];
@@ -32,7 +32,6 @@ export default {
     'father',
     'tapes',
     'second-box',
-    { maybe: 'street', chance: 0.2 },
     'plate',
     'strega',
     'count',
@@ -58,12 +57,13 @@ export default {
         { id: 'past', label: 'Walk straight past her', blurb: 'Nod, genuflect, keep going. She will have a lot to say about it by morning.', risk: 0.6, reward: 0.3 },
       ],
       resolve(c, { choice }) {
+        c.memo.espo = choice;
         if (choice === 'help') {
           for (const p of c.free) if (p.heat > 0 && c.rng.chance(0.3)) p.heat -= 1;
-          c.line('An hour of gladioli. Mrs. Esposito tells everybody on the phone tree that you were all at church on a Thursday night, and some of the neighbourhood believes it.');
+          c.line('Half an hour of gladioli. Mrs. Esposito tells everybody on the phone tree that you were all at church on a Thursday night, and some of the neighbourhood believes it.');
         } else if (choice === 'wait') {
           if (c.rng.chance(0.5)) c.line('She leaves at eleven. Father Dominic is still up, in the box, listening to the Mets.');
-          else { c.memo.dominicTired = true; c.line('She leaves at a quarter to twelve. Father Dominic is still in the box, but he is very tired and very short with everybody.'); }
+          else { c.memo.dominicTired = true; c.line('She leaves at a quarter past eleven. Father Dominic is still in the box, but he is very tired and very short with everybody.'); }
         } else {
           const who = c.rng.pick(c.free);
           if (who) c.heat(who.id, 1, 'Mrs. Esposito’s phone tree');
@@ -117,29 +117,35 @@ export default {
     },
 
     father: {
-      engine: 'whispers', time: '10:40 P.M.', place: 'St. Anthony’s, the second confessional on the left', title: 'Father Dominic', kicker: 'ONE OF YOU TALKS',
+      engine: 'whispers', place: 'St. Anthony’s, the second confessional on the left', title: 'Father Dominic',
+      time: (c) => (c.memo.espo === 'help' ? '10:55 P.M.' : c.memo.espo === 'wait' ? (c.memo.dominicTired ? '11:15 P.M.' : '11:00 P.M.') : '10:25 P.M.'), kicker: 'ONE OF YOU TALKS',
       whoLabel: 'Father Dominic, forty-one years at St. Anthony’s',
       text: (c) => {
         const t = c.freeByJob('talker')?.name ?? 'Somebody';
         return [
-          `Nonna has it on good authority — Mrs. Esposito, who does the flowers — that Father Dominic has been taping confessions since 1994, “for the archive.” Every one of you has been to confession at St. Anthony’s. ${c.rng.pick(['Dominic is in the box now, hearing nobody, eating a cannoli.', 'Dominic is in the box, and by the sound of it he has the Mets game on a transistor.'])}`,
+          `${{
+            help: 'Mrs. Esposito kisses everybody on both cheeks, says she will tell the whole parish how good you all were, and finally goes home.',
+            wait: c.memo.dominicTired ? 'Mrs. Esposito’s car finally pulls away at a quarter to twelve.' : 'Mrs. Esposito’s car finally pulls away.',
+            past: 'Mrs. Esposito watches every one of you all the way down the aisle, and then goes to find the phone in the vestry.',
+          }[c.memo.espo] ?? ''} What she told Nonna is true: Father Dominic has been taping confessions since 1994, “for the archive,” and every one of you is on a tape. ${c.memo.dominicTired ? 'He is still in the second confessional on the left, very tired and very short with everybody.' : c.rng.pick(['He is in the second confessional on the left, hearing nobody, eating a cannoli.', 'He is in the second confessional on the left, and by the sound of it he has the Mets game on a transistor.'])}`,
           `${t} goes in and kneels. The grille slides open. Everybody else knows one thing about Father Dominic.`,
         ];
       },
       openings: () => DOMINIC,
       filler: () => FILLER,
-      resolve(c, { success, openingLabel, talker }) {
+      resolve(c, { success, opening, talker }) {
+        c.memo.dominicGave = !!success;
         if (success) {
-          c.line(`${c.name(talker)} started with ${openingLabel.replace(/[“”]/g, '').replace(/\.$/, '')}. Father Dominic sighed, got up, unlocked the sacristy, and handed over a shoebox full of cassettes. “For the archive,” he said. “God has copies.”`);
+          c.line(`${c.name(talker)} ${DOMINIC.find((o) => o.id === opening)?.did ?? 'said something'}. Father Dominic sighed, got up, unlocked the sacristy, and handed over a shoebox full of cassettes. “For the archive,” he said. “God has copies.”`);
           return;
         }
         const alt = c.free.find((p) => p.job === 'altarboy');
         if (alt) {
-          c.line(`${c.name(talker)} started with ${openingLabel.replace(/[“”]/g, '').replace(/\.$/, '')}. It went badly, until Father Dominic saw ${alt.name} at the back of the church, remembered who served him Mass for six years, and handed over the tapes anyway.`);
+          c.line(`${c.name(talker)} ${DOMINIC.find((o) => o.id === opening)?.did ?? 'said something'}. It went badly, until Father Dominic saw ${alt.name} at the back of the church, remembered who served him Mass for six years, and handed over the tapes anyway.`);
           return;
         }
         const n = c.charge(talker, c.scale(15000));
-        c.line(`${c.name(talker)} started with ${openingLabel.replace(/[“”]/g, '').replace(/\.$/, '')}. Father Dominic was quiet for a long time. Then he said it would cost ${money(n)} for the roof, took it through the grille, and made a phone call before he handed over the tapes.`);
+        c.line(`${c.name(talker)} ${DOMINIC.find((o) => o.id === opening)?.did ?? 'said something'}. Father Dominic was quiet for a long time. Then he said it would cost ${money(n)} for the roof, took it through the grille, and made a phone call before he handed over the tapes.`);
         c.heat(talker, 1, 'Father Dominic made a phone call');
       },
     },
@@ -208,7 +214,9 @@ export default {
     plate: {
       engine: 'choose', time: '12:10 A.M.', place: 'The nave, St. Anthony’s', title: 'The Collection Plate', kicker: 'WHAT DO YOU GIVE?',
       text: (c) => [
-        'On your way out Father Dominic is waiting in the aisle with the collection plate, and an expression that says he knows exactly what you took from his sacristy.',
+        c.memo.dominicGave
+          ? 'On your way out Father Dominic is waiting in the aisle with the collection plate. He gave you the tapes. He would like you to remember that he gave you the tapes.'
+          : 'On your way out Father Dominic is waiting in the aisle with the collection plate, and an expression that says he knows exactly what it cost him to hand over those tapes.',
         `Give what you like, out of your own pocket. If the plate comes to ${money(c.scale(30000))} or more, Dominic will have a word with the judge’s wife, who does the flowers with Mrs. Esposito. Only the total is read out.`,
       ],
       who: (c) => c.free.map((p) => p.id),

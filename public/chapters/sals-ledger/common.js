@@ -147,6 +147,43 @@ export function share(c, ids, amount, source) {
   return each;
 }
 
+/**
+ * The table pays for something: out of the Bag first, and whatever the Bag
+ * can't cover out of everybody's pockets, a little at a time from whoever has
+ * the most. If it still doesn't come to enough, nothing is paid at all and
+ * the caller finds out how short it was.
+ */
+export function tablePays(c, amount, { who = null } = {}) {
+  const want = Math.max(0, Math.round(amount));
+  const bag = c.bagTake(want);
+  const pockets = {};
+  let left = want - bag;
+  const payers = (who ?? c.free.map((p) => p.id)).filter((id) => c.p(id) && !c.isAway(id));
+  for (let guard = 0; left > 0 && guard < 400; guard++) {
+    const can = payers.filter((id) => c.p(id).cash > 0).sort((x, y) => c.p(y).cash - c.p(x).cash);
+    if (!can.length) break;
+    const id = can[0];
+    const n = c.charge(id, Math.min(5000, left));
+    pockets[id] = (pockets[id] ?? 0) + n;
+    left -= n;
+  }
+  if (left > 0) {
+    // not enough between the Bag and everybody's pockets: nobody pays anything
+    c.bagAdd(bag);
+    for (const [id, n] of Object.entries(pockets)) c.give(id, n);
+    return { ok: false, paid: 0, bag: 0, pockets: {}, short: left, want, had: want - left };
+  }
+  return { ok: true, paid: want, bag, pockets, short: 0, want, had: want };
+}
+
+/** How something the table paid for was paid for, in words. */
+export function howPaid(r) {
+  const fromPockets = r.paid - r.bag;
+  if (!fromPockets) return `${money(r.paid)} out of the Bag`;
+  if (!r.bag) return `${money(r.paid)} out of everybody’s pockets, because the Bag is empty`;
+  return `${money(r.bag)} out of the Bag and ${money(fromPockets)} out of everybody’s pockets`;
+}
+
 export const names = (c, ids) => listNames(ids.map((id) => c.name(id)));
 
 /** "the Talker", or the Talker's actual name if there is one. */

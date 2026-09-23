@@ -10,7 +10,7 @@ export default {
     'pickup',
     'apartment',
     'precinct',
-    { maybe: 'street', chance: 0.2 },
+    { maybe: ['photographer', 'mancuso'], chance: 0.2, where: 'The steps of the 9th Precinct' },
     'bail',
     'who-told',
     'count',

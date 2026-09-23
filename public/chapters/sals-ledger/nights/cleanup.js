@@ -1,6 +1,6 @@
 // The Cleanup: the Case File is too thick. Tonight some of it goes missing.
 
-import { counting, money, round5k, nightDay, nightKicker, lowerFirst } from '../common.js';
+import { counting, money, round5k, nightDay, nightKicker, lowerFirst, tablePays, howPaid } from '../common.js';
 
 const MARJORIE = [
   { id: 'flowers', label: 'Flowers, and “Mr. Prout asked me to bring these up.”',
@@ -37,7 +37,7 @@ export default {
     { if: (c) => target(c) === 'clerk', then: 'jury' },
     'files',
     'copies',
-    { oneOf: [{ beat: 'fire-alarm', weight: 2 }, { beat: 'prout-late', weight: 1 }] },
+    { oneOf: [{ beat: 'fire-alarm', weight: 2, when: (c) => (c.memo.burned ?? 0) > 0 }, { beat: 'prout-late', weight: 1 }] },
     'count',
   ],
   close(c) {
@@ -53,12 +53,12 @@ export default {
     which: {
       engine: 'vote', time: '10:30 P.M.', place: 'Nonna’s kitchen', title: 'The Cleanup', kicker: 'A VOTE',
       text: (c) => [
-        `The Case File stands at ${c.caseFileValue}. Morty Klein says that’s ${c.caseFileValue >= 7 ? '“a life sentence with extra steps”' : '“very, very thick”'}. Two nights left. There is only one thing to do about a thick folder.`,
+        `The Case File stands at ${c.caseFileValue}. Morty Klein says that’s ${c.caseFileValue >= 7 ? '“a life sentence with extra steps”' : c.caseFileValue >= 4 ? '“very, very thick”' : '“thinner than Prout would like, and not as thin as I would”'}. Two nights left. ${c.caseFileValue >= 4 ? 'There is only one thing to do about a thick folder.' : 'Nobody at this table wants to find out what one more page does.'}`,
         'Where do you go to make some of it disappear?',
       ],
       options: (c) => [
         { id: 'office', label: 'Prout’s office', blurb: 'The fourth floor of the DA’s building. Prout’s secretary Marjorie works late. Somebody talks; everybody else knows something about Marjorie.', risk: 0.5, reward: 0.7 },
-        { id: 'precinct', label: 'The evidence room', blurb: 'The basement of the 9th Precinct. Ray Mancuso can get you to the door, for a price. After that it’s a roll.', risk: 0.6, reward: 0.6, details: [`${money(c.scale(20000))} to Ray, out of the Bag.`, `A roll: ${c.odds(2, 7)}.`] },
+        { id: 'precinct', label: 'The evidence room', blurb: 'The basement of the 9th Precinct. Ray Mancuso can get you to the door, for a price. After that it’s a roll.', risk: 0.6, reward: 0.6, details: [`${money(c.scale(20000))} to Ray, out of the Bag or your pockets.`, `A roll: ${c.odds(2, 7)}.`] },
         { id: 'clerk', label: 'The clerk’s office', blurb: 'The court clerk’s office, where the exhibits wait for Monday. Everybody has to pull their weight.', risk: 0.5, reward: 0.5, details: ['Hidden effort.'] },
       ],
       angles(c) {
@@ -73,8 +73,13 @@ export default {
       resolve(c, { choice }) {
         c.set('cleanupTarget', choice);
         if (choice === 'precinct') {
-          const n = c.bagTake(c.scale(20000));
-          c.line(`${money(n)} out of the Bag to Ray Mancuso, who counts it in the car and says the side door will be open at two.`);
+          const paid = tablePays(c, c.scale(20000));
+          c.memo.rayPaid = paid.ok;
+          if (!paid.ok) {
+            c.line(`Ray Mancuso wants ${money(paid.want)}. Between the Bag and everybody’s pockets there’s ${money(paid.had)}. Ray says he’ll “see what he can do” about the side door, which means no.`);
+            return;
+          }
+          c.line(`${howPaid(paid)}, to Ray Mancuso, who counts it in the car and says the side door will be open at two.`);
           const r = c.memo.raySchool;
           if (r && !c.isAway(r)) { c.give(r, 10000, 'Ray Mancuso'); c.note(r, `Ray gave you ${money(10000)} back. “For my sister.”`, 'Ray Mancuso'); }
         } else c.line(choice === 'office' ? 'Prout’s office. Somebody buys flowers, and pastries, and a clipboard, just in case.' : 'The clerk’s office. Everybody will need to pull their weight.');
@@ -90,18 +95,21 @@ export default {
       },
       openings: () => MARJORIE,
       filler: () => FILLER,
-      resolve(c, { success, openingLabel, talker }) {
+      resolve(c, { success, opening, talker }) {
         c.memo.inClean = success;
-        if (success) { c.line(`${c.name(talker)} tried ${openingLabel.replace(/[“”]/g, '').replace(/\.$/, '')}. Marjorie smiled, which nobody has ever seen, and went for her coffee break. The door to Prout’s office wasn’t even locked.`); return; }
-        c.line(`${c.name(talker)} tried ${openingLabel.replace(/[“”]/g, '').replace(/\.$/, '')}. Marjorie took off her glasses, looked at ${c.name(talker)} for a long time, and wrote something down. You get into the office. You don’t get long.`);
+        const did = { flowers: 'brought Marjorie flowers, “from Mr. Prout”', cleaning: 'said they were the night cleaning crew, doing the fourth floor', pastries: 'put a box of sfogliatelle from Ferrara’s on Marjorie’s desk', audit: 'said they were from the City Comptroller’s office, spot-checking the evidence logs' }[opening] ?? 'said something';
+        if (success) { c.line(`${c.name(talker)} ${did}. Marjorie smiled, which nobody has ever seen, and went for her coffee break. The door to Prout’s office wasn’t even locked.`); return; }
+        c.line(`${c.name(talker)} ${did}. Marjorie took off her glasses, looked at ${c.name(talker)} for a long time, and wrote something down. You get into the office. You don’t get long.`);
         c.heat(talker, 1, 'Marjorie wrote it down');
       },
     },
 
     'evidence-room': {
       engine: 'roll', time: '2:00 A.M.', place: 'The basement of the 9th Precinct', title: 'The Evidence Room', kicker: 'THE DICE',
-      text: () => ['Ray left the side door open, as promised. Down the stairs, past the boiler, to a cage full of cardboard boxes. The desk sergeant is upstairs, watching the Knicks, forty feet away.'],
-      target: () => 7,
+      text: (c) => [c.memo.rayPaid
+        ? 'Ray left the side door open, as promised. Down the stairs, past the boiler, to a cage full of cardboard boxes. The desk sergeant is upstairs, watching the Knicks, forty feet away.'
+        : 'Ray didn’t leave the side door open. The coal chute round the back is open, because it always is. Down the chute, past the boiler, to a cage full of cardboard boxes. The desk sergeant is upstairs, watching the Knicks, forty feet away.'],
+      target: (c) => (c.memo.rayPaid ? 7 : 8),
       label: 'Past the desk sergeant',
       stakes: 'Miss it and you’re in, but somebody heard the stairs.',
       resolve(c, r) {
@@ -181,8 +189,9 @@ export default {
           c.line(`The whole shelf goes into a laundry bag: ${money(back)} between you. The desk sergeant is going to have a very bad morning, and so is whoever Prout blames for it.`);
           return;
         }
+        if (!back) { c.line('You go through every bag on the shelf. None of them has your names on it. Nothing leaves the shelf, and nobody will ever know you looked.'); return; }
         c.caseFile(1, 'evidence bags missing from the 9th Precinct');
-        c.line(back ? `Every bag with one of your names on it: ${money(back)}, back where it belongs. The gaps on the shelf are shaped exactly like you.` : 'There’s nothing on the shelf with your names on it. You take nothing, and still leave a gap somebody will notice.');
+        c.line(`Every bag with one of your names on it: ${money(back)}, back where it belongs. The gaps on the shelf are shaped exactly like you.`);
       },
     },
 

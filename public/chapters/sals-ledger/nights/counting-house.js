@@ -1,8 +1,8 @@
 // The Counting House: the Bag is short, the trial is close, and there is one
 // room in this city with enough cash in it to fix that.
 
-import { counting, getaway, money, round5k, nightDay, nightKicker } from '../common.js';
-import { crew, cut, grabbers, onPost } from '../heist.js';
+import { counting, getaway, money, round5k, nightDay, nightKicker, tablePays, howPaid } from '../common.js';
+import { crew, cut, grabbers, onPost, post } from '../heist.js';
 
 const WAYS = {
   roof: { label: 'Over the roof', alarm: 1, blurb: 'Across from the laundry next door, through the skylight. Everybody has a job and it all has to work.' },
@@ -21,7 +21,7 @@ export default {
     { if: (c) => way(c) === 'fish', then: 'checkpoint' },
     { if: (c) => way(c) === 'inside', then: 'the-counter' },
     'the-book',
-    { maybe: 'heist', chance: 0.25 },
+    { maybe: 'inside', chance: 0.25, where: 'The stairs up to the counting room, Pearl Street' },
     'the-room',
     'getaway',
     'cut',
@@ -45,7 +45,7 @@ export default {
       options: (c) => Object.entries(WAYS).map(([id, w]) => ({
         id, label: w.label, blurb: w.blurb,
         risk: id === 'roof' ? 0.6 : id === 'fish' ? 0.5 : 0.3, reward: 0.7,
-        details: id === 'inside' ? [`Costs ${money(c.scale(40000))} out of the Bag.`, 'The alarm starts asleep.'] : id === 'roof' ? ['Hidden effort: everybody pulls their weight, or doesn’t.', 'The alarm starts twitchy.'] : [`A roll at the checkpoint: ${c.odds(2, 7)}.`],
+        details: id === 'inside' ? [`Costs ${money(c.scale(40000))} out of the Bag, or your pockets if the Bag can’t.`, 'The alarm starts asleep.'] : id === 'roof' ? ['Hidden effort: everybody pulls their weight, or doesn’t.', 'The alarm starts twitchy.'] : [`A roll at the checkpoint: ${c.odds(2, 7)}.`],
       })),
       angles(c) {
         const ps = c.rng.shuffle(c.free.map((p) => p.id));
@@ -58,8 +58,13 @@ export default {
       resolve(c, { choice }) {
         c.set('countingWay', choice);
         if (choice === 'inside') {
-          const n = c.bagTake(c.scale(40000));
-          c.line(`${money(n)} out of the Bag, in an envelope, to a man who counts money for a living and has a problem with the horses.`);
+          const paid = tablePays(c, c.scale(40000));
+          c.memo.counterPaid = paid.ok;
+          if (!paid.ok) {
+            c.line(`The counter wants ${money(paid.want)}. Between the Bag and everybody’s pockets there’s ${money(paid.had)}. He takes nothing, promises nothing, and says he’ll “see how he feels” on the night.`);
+            return;
+          }
+          c.line(`${howPaid(paid)}, in an envelope, to a man who counts money for a living and has a problem with the horses.`);
           const r = c.memo.richie;
           if (r && !c.isAway(r)) { c.give(r, 15000, 'cousin Richie'); c.note(r, `Richie slipped ${money(15000)} back into your pocket at the door. “Blood is blood.”`, 'Richie'); c.fact(r, 'angle', `Did ${c.name(r)} get money back from the counter?`, true); }
         } else {
@@ -130,7 +135,11 @@ export default {
 
     checkpoint: {
       engine: 'roll', time: '3:50 A.M.', place: 'The loading dock, Pearl Street', title: 'Under the Ice', kicker: 'THE DICE',
-      text: (c) => [`Everybody is under a tarp under four hundred pounds of ice and cod. ${c.memo.fishFriend && !c.isAway(c.memo.fishFriend) ? `Except ${c.name(c.memo.fishFriend)}, who is up front with the heater on.` : ''} The truck stops. A man with a flashlight walks round it, slowly, whistling.`],
+      text: (c) => {
+        // the driver's friend rides up front, unless they're our getaway driver, who is already on Pearl Street
+        const friend = c.memo.fishFriend && !c.isAway(c.memo.fishFriend) && post(c, c.memo.fishFriend) !== 'car' ? c.name(c.memo.fishFriend) : null;
+        return [`Everybody going in is under a tarp under four hundred pounds of ice and cod${friend ? ` — except ${friend}, who is up front with the driver and the heater on` : ''}. The truck stops at the loading dock. A man with a flashlight walks round it, slowly, whistling.`];
+      },
       target: () => 7,
       mods: (c) => (c.memo.fishFriend && !c.isAway(c.memo.fishFriend) ? [{ label: 'the driver owes a favour', n: 2 }] : []),
       label: 'Holding your breath under the cod',
@@ -143,12 +152,20 @@ export default {
 
     'the-counter': {
       engine: 'story', time: '3:50 A.M.', place: 'A side door on Pearl Street', title: 'The Counter', kicker: 'A DOOR LEFT OPEN',
-      run(c) { c.memo.inClean = true; },
-      text: (c) => [`The side door is propped with a phone book. The counter, a thin man in a cardigan, is at his desk with his back to you, listening to the ${c.rng.pick(['racing results', 'Knicks on the radio', 'shipping forecast, for some reason'])} very loudly. He does not turn round. He will swear on his mother that he never turned round.`],
+      enter(c) {
+        // paid in full, he looks away; unpaid, it's a coin toss how he feels tonight
+        c.memo.inClean = c.memo.counterPaid || c.rng.chance(0.35);
+      },
+      text: (c) => [c.memo.counterPaid
+        ? `The side door is propped with a phone book. The counter, a thin man in a cardigan, is at his desk with his back to you, listening to the ${c.rng.pick(['racing results', 'Knicks on the radio', 'shipping forecast, for some reason'])} very loudly. He does not turn round. He will swear on his mother that he never turned round.`
+        : c.memo.inClean
+          ? 'The side door is shut. The counter, a thin man in a cardigan, opens it himself, looks at your empty hands for a long time, and then steps aside. “The horses were good to me this week,” he says. “Don’t make me sorry.”'
+          : 'The side door is shut. The counter, a thin man in a cardigan, opens it himself, looks at your empty hands, and goes back inside to pick up the phone. You go in anyway, past him, while he’s still dialling.'],
     },
 
     'the-room': {
       engine: 'grab', time: '4:05 A.M.', place: 'The counting room, third floor', title: 'The Counting Room', kicker: 'HOW GREEDY ARE YOU?',
+      carCaught: (c, n) => `${n} was still on Pearl Street with the engine running, right under the lit window. One of the men from the door took the plate.`,
       text(c) {
         const d = c.freeByJob('driver');
         return [

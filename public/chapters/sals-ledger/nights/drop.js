@@ -36,9 +36,19 @@ const CHASES = {
 function chaseBeat(id) {
   const ch = CHASES[id];
   return {
-    engine: 'roll', time: '11:25 P.M.', place: ch.place, title: ch.title, kicker: 'THE CHASE',
+    engine: 'roll', place: ch.place, title: ch.title, kicker: 'THE CHASE',
+    time: (c) => ((c.memo.chased?.length ?? 1) > 1 ? '11:41 P.M.' : '11:25 P.M.'),
     enter(c) { c.memo.chased = [...(c.memo.chased ?? []), id]; },
-    text: (c) => [ch.text, `${c.freeByJob('driver')?.name ?? 'Whoever’s driving'} has both hands on the wheel and ${money(c.memo.take ?? 0)} on the back seat.`],
+    text: (c) => {
+      const first = (c.memo.chased?.length ?? 1) <= 1;
+      const decoy = onPost(c, 'decoy')[0];
+      const diner = onPost(c, 'diner')[0];
+      const help = first ? [
+        decoy ? `${decoy.name} peels off the other way in the decoy, and one set of headlights goes after it.` : null,
+        diner ? `${diner.name} is on the diner payphone to the car, calling out which way the Lincolns are turning.` : null,
+      ].filter(Boolean).join(' ') : (c.memo.chaseMod ? 'The Lincolns stopped for the gym bag, and lost a block doing it.' : 'The Lincolns are still there. They were always going to be still there.');
+      return [`${first ? '' : 'Again. '}${ch.text}${help ? ` ${help}` : ''}`, `${c.freeByJob('driver')?.name ?? 'Whoever’s driving'} has both hands on the wheel and ${money(c.memo.take ?? 0)} on the back seat.`];
+    },
     // a decoy pulls one Lincoln away on the first chase; somebody at the diner sees the rest coming
     target: (c) => ch.target + (c.memo.wrongCar ? 1 : 0) + (c.memo.chaseMod ?? 0)
       - ((c.memo.chased?.length ?? 0) <= 1 && onPost(c, 'decoy').length ? 1 : 0)
@@ -87,6 +97,7 @@ export default {
   defs: {
     lot: crew({
       time: '10:40 P.M.', place: 'Route 9, across from the Shop-Rite',
+      carWhere: 'at the wheel', talkerDoes: 'picking the car',
       text: (c) => [
         `The Shop-Rite lot at twenty to eleven, from across Route 9. ${c.rng.pick(['The Castellanos’ bagman is due at half past.', 'Somebody’s already parked a black Lincoln at the far end with the engine running.'])} Whoever is in the car with the money when it leaves is in the chase, with everything that goes with a chase.`,
         'Pick where you are tonight. It all gets split evenly at the end, whatever you did — so somebody has to be brave, and everybody else has to trust them.',
@@ -118,6 +129,7 @@ export default {
         if (choice === 'garage') {
           c.memo.ditched = true;
           const found = c.rng.chance(c.memo.chaseOk?.[0] ? 0.25 : 0.5);
+          c.memo.garageSafe = !found;
           if (!found) { c.line('Lights off, door down. The Lincolns go past twice, slowly, and then they don’t come back. Nobody talks for an hour.'); return; }
           const lost = round5k((c.memo.take ?? 0) * 0.3);
           c.memo.take = Math.max(0, (c.memo.take ?? 0) - lost);
@@ -162,10 +174,13 @@ export default {
     ...Object.fromEntries(Object.keys(CHASES).map((id) => [`chase-${id}`, chaseBeat(id)])),
 
     'the-count': {
-      engine: 'report', time: '12:10 A.M.', place: 'A lock-up garage on Water Street', title: 'The Count', kicker: 'SOMEBODY COUNTS IT',
+      engine: 'report', time: '12:10 A.M.', title: 'The Count', kicker: 'SOMEBODY COUNTS IT',
+      place: (c) => (c.memo.garageSafe ? 'Nonna’s cousin’s garage, still' : 'A lock-up garage on Water Street'),
+      enter(c) { c.memo.counter = (c.freeByJob('numbers') ?? c.rng.pick(c.free))?.id ?? null; },
+      counter: (c) => c.memo.counter,
       text: (c) => [
-        'The bags go on the floor of a lock-up garage under one bulb. Somebody has to count it, and there’s only room for one person between the car and the wall.',
-        `${c.freeByJob('numbers')?.name ?? 'Whoever counts'} counts. Everybody else waits outside and trusts them, because what else are you going to do. Whatever they say it comes to gets split evenly. Whatever they don’t say, they keep.`,
+        `${c.memo.garageSafe ? 'Nobody wants to drive anywhere yet. The bags go on the floor of Nonna’s cousin’s garage' : 'The bags go on the floor of a lock-up garage'} under one bulb. Somebody has to count it, and there’s only room for one person between the car and the wall.`,
+        `${c.memo.counter ? c.name(c.memo.counter) : 'Somebody'} counts${c.freeByJob('numbers')?.id === c.memo.counter ? ', because counting is the job' : ', because somebody has to'}. Everybody else waits outside and trusts them, because what else are you going to do. Whatever they say it comes to gets split evenly. Whatever they don’t say, they keep.`,
       ],
       amount: (c) => c.memo.take ?? 0,
       resolve(c, { reported, counter }) {

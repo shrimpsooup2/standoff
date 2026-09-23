@@ -14,7 +14,7 @@ const PLACES = {
 export default {
   id: 'raid', title: 'The Raid', act: 2, day: nightDay, kicker: (c) => `${nightKicker(c)} · BOTH SIDES OF THE RIVER`,
   when: (c) => !!c.families,
-  beats: ['five-am', 'hide-it', 'the-van', { maybe: 'street', chance: 0.25 }, 'give-back', 'count'],
+  beats: ['five-am', 'hide-it', 'the-van', { maybe: ['photographer', 'mancuso'], chance: 0.25, where: 'The corner of Mulberry and Front' }, 'give-back', 'count'],
   close(c) {
     c.remember(
       `Federal agents raided more than thirty addresses on both sides of the river before dawn on ${c.rng.pick(['Friday', 'what one neighbour called “a perfectly nice morning”'])}. ${c.memo.vanned ? `One local person was taken away in a van, wearing a dressing gown.` : 'Nobody was taken away.'} Agents were seen carrying out “a lot of mattresses.”`,

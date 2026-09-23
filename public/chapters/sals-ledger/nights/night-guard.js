@@ -47,7 +47,7 @@ export default {
     'way-in',
     { if: (c) => wayIn(c) === 'gate', then: 'lenny', else: { if: (c) => wayIn(c) === 'fence', then: 'fence', else: 'water' } },
     'log',
-    { maybe: 'heist', chance: 0.2 },
+    { maybe: 'inside', chance: 0.2, where: 'The corridor to the cage, Pier 9' },
     'cage',
     'box',
     { oneOf: [
@@ -118,11 +118,12 @@ export default {
       },
       openings: () => LENNY.openings,
       filler: () => LENNY.filler,
-      resolve(c, { success, openingLabel, talker }) {
+      resolve(c, { success, opening, talker }) {
+        const did = { giants: 'said it was a tough loss for the Giants', union: 'said Local 1814 had sent them for the shift change', mother: 'told Lenny his mother was on the phone, about the cat', envelope: 'slid Lenny an envelope' }[opening] ?? 'said something';
         c.memo.inClean = !!success;
         if (success) {
           c.memo.lennyClean = true;
-          c.line(`${c.name(talker)} opened with ${openingLabel.replace(/[“”]/g, '')} Lenny laughed, lifted the barrier, and went back to his sandwich.`);
+          c.line(`${c.name(talker)} ${did}. Lenny laughed, lifted the barrier, and went back to his sandwich.`);
           if (c.memo.lennyOwes && !c.isAway(c.memo.lennyOwes)) {
             c.give(c.memo.lennyOwes, 10000, 'Lenny’s card debt');
             c.note(c.memo.lennyOwes, 'On the way in Lenny slipped you an envelope without a word: the $10k from Tuesday.', 'Lenny Russo');
@@ -130,7 +131,7 @@ export default {
           return;
         }
         c.set('lennySaw', talker);
-        c.line(`${c.name(talker)} opened with ${openingLabel.replace(/[“”]/g, '')} Lenny squinted, reached for his notebook, and wrote something down while you went round him. He got a very good look at ${c.name(talker)}.`);
+        c.line(`${c.name(talker)} ${did}. Lenny squinted, reached for his notebook, and wrote something down while you went round him. He got a very good look at ${c.name(talker)}.`);
         c.heat(talker, 2, 'Lenny wrote it down');
         c.remember(`${c.name(talker)}'s face went into Lenny Russo's notebook.`, { who: talker, kind: 'seen' });
       },
@@ -254,8 +255,10 @@ export default {
     box: {
       engine: 'draft', time: '12:15 A.M.', place: 'The evidence cage, Pier 9', title: 'Sal’s Box', kicker: 'TAKE ONE, PASS THE BOX',
       text: (c) => [
-        'The cage is open. Everything that came out of Sal’s house is in one cardboard box with a case number on the side in Prout’s handwriting.',
-        'Take one thing and pass it on. Everybody sees what everybody takes. Whatever is left in the box, Prout keeps — and if that’s a page of the ledger, it goes in his folder.',
+        c.memo.cageOpen === false
+          ? 'The cage door gives four inches and no more. Everything that came out of Sal’s house is in one cardboard box just inside, with a case number on the side in Prout’s handwriting, and you can only reach the front of it.'
+          : 'The cage is open. Everything that came out of Sal’s house is in one cardboard box with a case number on the side in Prout’s handwriting.',
+        `${c.memo.cageOpen === false ? 'One arm at a time, through the gap: take' : 'Take'} one thing and pass it on. Everybody sees what everybody takes. Whatever is left in the box, Prout keeps — and if that’s a page of the ledger, it goes in his folder.`,
       ],
       order(c, ids) {
         // whoever got the crew in picks first; the rest in any order
@@ -338,7 +341,7 @@ export default {
         const holders = c.free.filter((p) => (c.s.night.earned[p.id] ?? 0) > 0);
         const who = c.rng.pick(holders.length ? holders : c.free);
         const lost = c.charge(who.id, round5k((c.s.night.earned[who.id] ?? 0) / 2));
-        c.line(`Bruno caught ${who.name} at the fence. ${lost ? `${money(lost)} went over the pier and into the harbor.` : 'Bruno got a shoe.'}`);
+        c.line(`Bruno caught ${who.name} ${{ water: 'on the ladder down to the rowboat', gate: 'halfway to the gate', fence: 'at the fence' }[c.flag('pier9Way')] ?? 'at the fence'}. ${lost ? `${money(lost)} went over the pier and into the harbor.` : 'Bruno got a shoe.'}`);
         c.heat(who.id, 1, 'the dogs');
       },
     },

@@ -23,7 +23,7 @@ export default {
     'fight',
     'tommy',
     { if: (c) => !!c.memo.sitter, then: 'baccarat' },
-    { maybe: 'heist', chance: 0.2 },
+    { maybe: 'inside', chance: 0.2, where: 'The corridor to the counting room, lower deck' },
     'counting-room',
     'purser',
     { oneOf: [{ beat: 'overboard', weight: 2 }, { beat: 'tender', weight: 1.5 }] },
@@ -212,7 +212,7 @@ export default {
         } else {
           const n = c.charge(id, 10000);
           c.memo.tommyMod = 1;
-          c.line(`${c.name(id)} loses ${money(n)} on a four. Big Tommy yawns, checks his watch, and says he’ll just go down and see how the count is doing.`);
+          c.line(`${n ? `${c.name(id)} loses ${money(n)} on a four.` : `${c.name(id)} turns over a four, with nothing left in front of them to lose.`} Big Tommy yawns, checks his watch, and says he’ll just go down and see how the count is doing.`);
         }
       },
     },
@@ -275,6 +275,7 @@ export default {
 
     'counting-room': {
       engine: 'grab', time: '1:15 A.M.', place: 'The counting room, lower deck', title: 'Just One More', kicker: 'HOW GREEDY ARE YOU?',
+      carCaught: (c, n) => `${n} was still in the tender at the stern with the engine running, lit up by the deck lights. Somebody at the rail got a very good look.`,
       text(c) {
         const d = dress(c);
         const how = {
@@ -284,7 +285,7 @@ export default {
         }[d];
         const driver = c.freeByJob('driver');
         return [
-          `${how} The counting room door is propped open with a fire extinguisher. Inside: tonight’s take, in rubber bands, on a table, and nobody.`,
+          `${how} The counting room door is propped open with a fire extinguisher. Inside: tonight’s take, in rubber bands, on a table, and nobody${c.memo.tommyMod > 0 ? ' — yet. Big Tommy is on his way down the stairs from the baccarat table, slowly, because he is Big Tommy' : c.memo.tommyMod < 0 ? '. Upstairs, Big Tommy has just ordered another bottle' : ''}.`,
           `Every round, grab or go. The alarm is a man called Fat Sal (no relation) who comes back from his cigarette whenever he feels like it. ${driver ? `${driver.name} is in the tender tied up at the stern, and decides when it leaves.` : 'Nobody is minding the tender.'}`,
         ];
       },

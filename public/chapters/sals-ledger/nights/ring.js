@@ -2,11 +2,22 @@
 // first time. It has sat in the window of Castellano Pawn & Loan ever since,
 // and on Monday she would like to wear it to court.
 
-import { counting, money, round5k, nightDay, nightKicker } from '../common.js';
+import { counting, money, round5k, nightDay, nightKicker, tablePays, howPaid } from '../common.js';
 
 function price(c) {
   return round5k(c.scale(60000) * (c.flag('war') ? 1.5 : 1));
 }
+
+/** After a break-in at half past two, the rest of the night happens at dawn, not at eleven. */
+const late = (c) => c.memo.plan === 'steal';
+const at = (evening, night, morning = null) => (c) => (morning && c.memo.got === 'fake' && c.memo.lateCopy ? morning : late(c) ? night : evening);
+
+const BENNY_DID = {
+  ear: 'talked into Benny’s left ear',
+  vinnie: 'said they knew his cousin Vinnie',
+  1957: 'asked Benny about Nonna, in 1957',
+  watches: 'asked to see the watches',
+};
 
 export default {
   id: 'ring', title: 'Nonna’s Ring', day: nightDay, kicker: nightKicker,
@@ -14,7 +25,7 @@ export default {
     'window',
     'shop',
     { if: (c) => c.memo.plan === 'buy', then: ['benny', { if: (c) => c.memo.short > 0, then: 'short' }] },
-    { if: (c) => c.memo.plan === 'steal', then: ['back-room', { maybe: 'street', chance: 0.25 }, { if: (c) => c.flag('ring') === 'stolen-failed', then: 'upstairs' }] },
+    { if: (c) => c.memo.plan === 'steal', then: ['back-room', { maybe: ['jammed', 'dog', 'patrol'], chance: 0.25, when: (c) => c.memo.got === 'real', where: 'The alley behind Castellano Pawn & Loan' }, { if: (c) => c.flag('ring') === 'stolen-failed', then: 'upstairs' }] },
     { if: (c) => c.memo.plan === 'fake', then: 'sid' },
     { if: (c) => c.memo.plan === 'truth', then: ['who-tells', 'the-words', 'truth', 'make-it-up'] },
     { if: (c) => c.memo.plan !== 'truth' && !c.memo.got, then: 'empty-handed' },
@@ -100,11 +111,12 @@ export default {
         'Benny’s shop sign has said CLOSING DOWN — EVERYTHING MUST GO since 1991.',
         'Benny keeps a shotgun under the counter, and everybody on Fifth Street knows it.',
       ],
-      resolve(c, { success, openingLabel, talker }) {
+      resolve(c, { success, opening, talker }) {
+        const did = BENNY_DID[opening] ?? 'said something';
         c.memo.bennyWarm = !!success;
         const plan = c.memo.plan;
         if (success) {
-          c.line(`${c.name(talker)} tried ${openingLabel.toLowerCase()}. Twenty minutes later Benny is showing them photographs. ${{
+          c.line(`${c.name(talker)} ${did}. Twenty minutes later Benny is showing them photographs. ${{
             buy: 'He is going to be reasonable about the price. He says so himself.',
             steal: 'When they leave, he forgets to lock the back door behind them. He never forgets.',
             fake: 'He even takes the ring out of the window and lets them hold it under the light for a while. Every scratch, every mark.',
@@ -113,7 +125,7 @@ export default {
           if (plan === 'truth') c.memo.ticket = talker;
           return;
         }
-        c.line(`${c.name(talker)} tried ${openingLabel.toLowerCase()}. Benny looked at them for a long time with his bad ear turned towards them, and then picked up the phone. ${plan === 'buy' ? 'The price just went up.' : plan === 'steal' ? 'He’s going to be sleeping lightly tonight.' : 'He’s telling somebody about it.'}`);
+        c.line(`${c.name(talker)} ${did}. Benny looked at them for a long time with his bad ear turned towards them, and then picked up the phone. ${plan === 'buy' ? 'The price just went up.' : plan === 'steal' ? 'He’s going to be sleeping lightly tonight.' : 'He’s telling somebody about it.'}`);
         c.heat(talker, 1, 'Benny Castellano remembers faces');
       },
     },
@@ -150,7 +162,7 @@ export default {
     },
 
     'fifth-street': {
-      engine: 'vote', time: '11:20 P.M.', place: 'Fifth Street', title: 'The Walk Home', kicker: 'A VOTE',
+      engine: 'vote', time: at('11:20 P.M.', '3:00 A.M.'), place: 'Fifth Street', title: 'The Walk Home', kicker: 'A VOTE',
       text: (c) => [
         `The ring is in a velvet box in somebody’s inside pocket, and it is six blocks back to Nonna’s. ${c.flag('war') ? 'Fifth Street is Castellano street, and there is a black Lincoln idling outside the social club.' : 'Fifth Street is quiet. Fifth Street is always quiet until it isn’t.'}`,
         'How does it get home?',
@@ -175,7 +187,7 @@ export default {
     },
 
     presenter: {
-      engine: 'vote', time: '11:40 P.M.', place: 'Nonna’s front door', title: 'Who Gives It to Her?', kicker: 'PICK ONE OF YOU',
+      engine: 'vote', time: at('11:40 P.M.', '3:20 A.M.', '7:10 A.M.'), place: 'Nonna’s front door', title: 'Who Gives It to Her?', kicker: 'PICK ONE OF YOU',
       when: (c) => !c.memo.herself,
       text: (c) => [
         c.memo.got === 'fake'
@@ -203,7 +215,7 @@ export default {
       stakes: (c) => `Make it and he knocks a third off. Miss it and he’s insulted, and adds a fifth.`,
       resolve(c, r) {
         let p = price(c);
-        if (r.success) { p = round5k(p * 0.67); c.line(`Benny laughed until he coughed, then took ${money(p)}. “For your grandmother,” he said. “Not for you.”`); }
+        if (r.success) { p = round5k(p * 0.67); c.line(`Benny laughed until he coughed, then came down to ${money(p)}. “For your grandmother,” he said. “Not for you.”`); }
         else { p = round5k(p * 1.2); c.line(`Benny took offence at something nobody meant and put the price up to ${money(p)}. It’s still the ring.`); }
         if (c.bag.total < p) {
           c.memo.price = p;
@@ -212,6 +224,7 @@ export default {
           return;
         }
         c.bagTake(p);
+        c.line(`${money(p)} out of the Bag, onto the counter. Benny counts it twice and goes to the window.`);
         const f = c.memo.bennyFriend;
         if (f && !c.isAway(f)) {
           const skim = Math.min(15000, p);
@@ -290,20 +303,19 @@ export default {
       ],
       options: (c) => [
         { id: 'run', label: 'Run', blurb: 'Out through the back, over the fence, and split up. Benny knows your faces. He might keep them to himself.', risk: 0.3, reward: 0.1 },
-        { id: 'pay', label: 'Put the Bag’s money on the stairs', blurb: `Make it a sale after all: ${money(round5k(price(c) * 1.2))}, for the ring and the door. If the Bag has it.`, risk: 0.2, reward: 0.5 },
+        { id: 'pay', label: 'Put the money on the stairs', blurb: `Make it a sale after all: ${money(round5k(price(c) * 1.2))}, for the ring and the door, out of the Bag and your pockets. If you have it between you.`, risk: 0.2, reward: 0.5 },
         { id: 'nonna', label: 'Tell him who it’s for', blurb: 'Hands up, and say her name. Benny was sweet on her once. Or Benny hates the whole family. It depends who you believe.', risk: 0.6, reward: 0.7 },
       ],
       resolve(c, { choice }) {
         if (choice === 'pay') {
-          const want = round5k(price(c) * 1.2);
-          if (c.bag.total < want) {
-            c.line(`Somebody opens the Bag on the stairs. It has ${money(c.bag.total)}. Benny laughs, which is worse than the shotgun. Everybody runs.`);
+          const paid = tablePays(c, round5k(price(c) * 1.2));
+          if (!paid.ok) {
+            c.line(`Everybody turns out the Bag and their pockets on the stairs: ${money(paid.had)}. Benny wants ${money(paid.want)}. He laughs, which is worse than the shotgun. Everybody runs.`);
             c.caseFile(1, 'Benny gave the police a description');
             return;
           }
-          c.bagTake(want);
           c.memo.got = 'real';
-          c.line(`${money(want)} on the third stair. Benny comes down, counts it with the shotgun under his arm, and goes to the safe himself. “Next time,” he says, “use the front door, like people.”`);
+          c.line(`${howPaid(paid)}, on the third stair. Benny comes down, counts it with the shotgun under his arm, and goes to the safe himself. “Next time,” he says, “use the front door, like people.”`);
           c.caseFile(-1, 'Benny told the police it was a misunderstanding');
           return;
         }
@@ -325,7 +337,7 @@ export default {
     },
 
     'empty-handed': {
-      engine: 'vote', time: '11:00 P.M.', place: 'The stoop outside Nonna’s', title: 'Empty-Handed', kicker: 'A VOTE',
+      engine: 'vote', time: at('11:00 P.M.', '3:15 A.M.'), place: 'The stoop outside Nonna’s', title: 'Empty-Handed', kicker: 'A VOTE',
       text: (c) => [
         `The ring is still in Benny’s window${c.flag('ring') === 'stolen-failed' ? ', and there is a police car outside the shop' : ''}. Upstairs, Nonna has laid out her good black dress for Monday, and the space on her hand where the ring goes.`,
         'What do you do?',
@@ -333,16 +345,15 @@ export default {
       options: (c) => [
         { id: 'quiet', label: 'Say nothing', blurb: 'Let her find out on Monday morning, when there’s no box on the table.', risk: 0.2, reward: 0 },
         { id: 'tell', label: 'Go up and tell her', blurb: 'All of you, tonight. She’ll take it however Nonna takes it.', risk: 0.2, reward: 0.3 },
-        { id: 'copy', label: 'Wake up Sid', blurb: `A copy by morning, rushed: ${money(round5k(c.scale(15000) * 1.5))} out of the Bag. Her eyes aren’t what they were.`, risk: 0.5, reward: 0.4 },
+        { id: 'copy', label: 'Wake up Sid', blurb: `A copy by morning, rushed: ${money(round5k(c.scale(15000) * 1.5))} out of the Bag or your pockets. Her eyes aren’t what they were.`, risk: 0.5, reward: 0.4 },
       ],
       resolve(c, { choice }) {
         if (choice === 'copy') {
-          const want = round5k(c.scale(15000) * 1.5);
-          if (c.bag.total < want) { c.line(`Sid answers the door in a hairnet. The Bag has ${money(c.bag.total)}. Sid goes back to bed.`); return; }
-          c.bagTake(want);
+          const paid = tablePays(c, round5k(c.scale(15000) * 1.5));
+          if (!paid.ok) { c.line(`Sid answers the door in a hairnet. Between the Bag and everybody’s pockets there’s ${money(paid.had)}. Sid goes back to bed.`); return; }
           c.memo.got = 'fake';
           c.memo.lateCopy = true;
-          c.line(`${money(want)} out of the Bag. Sid puts the coffee on, props Nonna’s wedding photograph against the cup, and works until five with his loupe in.`);
+          c.line(`${howPaid(paid)}. Sid puts the coffee on, props Nonna’s wedding photograph against the cup, and works until five with his loupe in.`);
           return;
         }
         if (choice === 'tell') {
@@ -390,11 +401,18 @@ export default {
     sid: {
       engine: 'story', time: '10:30 P.M.', place: 'Sid’s, Canal Street', title: 'Sid the Jeweler', kicker: 'A COPY',
       run(c) {
-        const n = c.bagTake(c.scale(15000));
+        const paid = tablePays(c, c.scale(15000));
+        if (!paid.ok) {
+          // Sid does it for what there is, and it shows
+          c.memo.got = 'fake';
+          c.memo.cheapCopy = true;
+          c.line(`Between the Bag and everybody’s pockets there’s nothing Sid would call money. He makes it anyway, “for your grandmother,” in two hours instead of eight, and says not to let her hold it to the light.`);
+          return;
+        }
         c.memo.got = 'fake';
         const s = c.memo.sidNephew;
-        if (s && !c.isAway(s)) { const cut = Math.min(10000, n); c.give(s, cut, 'Uncle Sid'); c.note(s, `Uncle Sid slipped you ${money(cut)} on the way out. “Family,” he said.`, 'Sid'); }
-        c.line(`${money(n)} out of the Bag. Sid works through the night with a loupe in his eye and a photograph from Nonna’s wedding propped against a coffee cup.`);
+        if (s && !c.isAway(s)) { const cut = Math.min(10000, paid.paid); c.give(s, cut, 'Uncle Sid'); c.note(s, `Uncle Sid slipped you ${money(cut)} on the way out. “Family,” he said.`, 'Sid'); }
+        c.line(`${howPaid(paid)}. Sid works through the night with a loupe in his eye and a photograph from Nonna’s wedding propped against a coffee cup.`);
       },
       text: (c) => [`Sid is seventy-six and has made copies of rings for three generations of wives who were not supposed to find out. ${c.rng.pick(['He says the garnet is the hard part.', 'He says he could make this one in his sleep, and then he nearly does.'])}`],
     },
@@ -430,7 +448,7 @@ export default {
     },
 
     'nonna-real': {
-      engine: 'story', time: '11:45 P.M.', place: 'Nonna’s kitchen', title: 'Nonna', kicker: 'THE RING',
+      engine: 'story', time: at('11:45 P.M.', '3:30 A.M.'), place: 'Nonna’s kitchen', title: 'Nonna', kicker: 'THE RING',
       run(c) {
         const giver = (c.memo.herself ? c.memo.teller : null) ?? (c.memo.presenter && !c.isAway(c.memo.presenter) ? c.memo.presenter : null) ?? c.memo.ringVoters?.find((id) => !c.isAway(id)) ?? c.free[0]?.id;
         c.set('ring', 'real');
@@ -447,12 +465,12 @@ export default {
     },
 
     'nonna-fake': {
-      engine: 'roll', time: '11:45 P.M.', place: 'Nonna’s kitchen', title: 'Does Nonna Notice?', kicker: 'THE DICE',
-      text: () => [
-        'Sid’s copy goes on the kitchen table in a velvet box, next to the Bag. It is very good. Nonna picks it up and holds it to the light.',
+      engine: 'roll', time: at('11:45 P.M.', '3:30 A.M.', '7:15 A.M.'), place: 'Nonna’s kitchen', title: 'Does Nonna Notice?', kicker: 'THE DICE',
+      text: (c) => [
+        `${c.memo.lateCopy ? 'At seven, with the coffee, ' : ''}Sid’s copy goes on the kitchen table in a velvet box, next to the Bag.${c.memo.cheapCopy ? ' It was made in two hours.' : ' It is very good.'} Nonna picks it up and holds it to the light.`,
         'Her eyes aren’t what they were. Her memory is.',
       ],
-      target: (c) => 8 + (c.memo.bennyWarm === true ? -2 : 0) + (c.memo.blessed ? -1 : 0),
+      target: (c) => 8 + (c.memo.bennyWarm === true ? -2 : 0) + (c.memo.blessed ? -1 : 0) + (c.memo.cheapCopy ? 1 : 0),
       label: 'Nonna holds it to the light',
       stakes: 'Make it and she wears it to court none the wiser. Miss it and she knows — and on Monday she curses the dice.',
       resolve(c, r) {
@@ -467,6 +485,6 @@ export default {
       },
     },
 
-    count: counting({ time: '12:45 A.M.' }),
+    count: counting({ time: at('12:45 A.M.', '4:15 A.M.', '8:00 A.M.') }),
   },
 };

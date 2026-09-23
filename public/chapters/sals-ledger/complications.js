@@ -1,12 +1,17 @@
-// Things that go wrong. Any heist can pick one of these up between beats, so
-// the same night never plays the same way twice.
+// Things that go wrong. A night can pick one of these up between beats, so
+// the same night never plays the same way twice. Each night says which ones
+// fit the moment — a cleaner inside, a jammed door on the way out, a patrol
+// car on the street — and the complication happens there, at that time.
 
-import { money } from './common.js';
+import { money, tablePays, howPaid } from './common.js';
+
+/** Where and when the night was when this happened. */
+const at = (fallback) => (c) => c.memo.aside?.where ?? fallback;
+const when = (c) => c.memo.aside?.time ?? null;
 
 export const COMPLICATIONS = {
   patrol: {
-    engine: 'roll', title: 'The Patrol Car', kicker: 'SOMETHING’S WRONG', place: 'Outside',
-    time: (c) => c.beat?.time ?? null,
+    engine: 'roll', title: 'The Patrol Car', kicker: 'SOMETHING’S WRONG', place: at('Outside'), time: when,
     text: (c) => [c.rng.pick([
       'A patrol car turns the corner and slows down to a crawl. The officer is eating a sandwich and looking directly at you.',
       'A patrol car pulls up across the street and just sits there with the engine running. Nobody knows how long it has been there.',
@@ -25,21 +30,23 @@ export const COMPLICATIONS = {
   },
 
   cleaner: {
-    engine: 'vote', title: 'The Cleaner', kicker: 'SOMETHING’S WRONG', place: 'A corridor that should have been empty',
+    engine: 'vote', title: 'The Cleaner', kicker: 'SOMETHING’S WRONG', place: at('A corridor that should have been empty'), time: when,
     text: (c) => [c.rng.pick([
       'A cleaning woman with a mop and a radio comes round the corner, stops, and takes out one earbud. Her name badge says CONSUELA. She is not scared. She is annoyed.',
       'There is a cleaner. Nobody said there would be a cleaner. She is looking at you over her cart like she has seen this before, which she might have.',
     ]), 'Decide what to do about her. Quickly.'],
     options: (c) => [
-      { id: 'pay', label: 'Pay her', blurb: `${money(c.scale(15000))} out of the Bag, and she saw nothing.`, risk: 0.1, reward: 0.2 },
+      { id: 'pay', label: 'Pay her', blurb: `${money(c.scale(15000))} out of the Bag, or out of your pockets if the Bag can’t, and she saw nothing.`, risk: 0.1, reward: 0.2 },
       { id: 'phone', label: 'Take her phone', blurb: 'Maybe she talks anyway. Maybe she doesn’t.', risk: 0.5, reward: 0.5 },
       { id: 'along', label: 'Bring her along', blurb: 'She knows where everything is. She has opinions about all of it.', risk: 0.6, reward: 0.6 },
       { id: 'go', label: 'Let her go', blurb: 'She tells somebody. Probably Prout.', risk: 0.8, reward: 0.1 },
     ],
     resolve(c, { choice }) {
       if (choice === 'pay') {
-        const n = c.bagTake(c.scale(15000));
-        c.line(`${money(n)} out of the Bag. Consuela counted it in front of you, twice, and went back to mopping.`);
+        const r = tablePays(c, c.scale(15000));
+        if (r.ok) { c.line(`${howPaid(r)}. Consuela counted it in front of you, twice, and went back to mopping.`); return; }
+        c.line(`Between the Bag and everybody’s pockets there’s ${money(r.had)}. Consuela looks at it, and at you, and walks straight to a phone.`);
+        c.caseFile(1, 'a cleaner who couldn’t be paid');
         return;
       }
       if (choice === 'phone') {
@@ -58,7 +65,7 @@ export const COMPLICATIONS = {
   },
 
   dog: {
-    engine: 'roll', title: 'The Dog', kicker: 'SOMETHING’S WRONG', place: 'The yard',
+    engine: 'roll', title: 'The Dog', kicker: 'SOMETHING’S WRONG', place: at('The yard'), time: when,
     text: (c) => [c.rng.pick([
       'Nobody mentioned a dog. There is a dog. It is a German shepherd called, according to its collar, PRINCESS.',
       'The dog was supposed to be asleep. The dog is not asleep. The dog is very interested in everybody’s legs.',
@@ -77,7 +84,7 @@ export const COMPLICATIONS = {
 
   jammed: {
     engine: 'plan', title: 'The Jammed Door', kicker: 'EVERYBODY PUSHES',
-    place: 'The back exit',
+    place: at('The back exit'), time: when,
     text: () => ['The back door is jammed. Painted shut, probably in 1987. It needs everyone on it — or it needs everyone to say they were on it.'],
     target: (c) => c.free.length + 4,
     cost: () => 0,
@@ -90,7 +97,7 @@ export const COMPLICATIONS = {
   },
 
   mancuso: {
-    engine: 'vote', title: 'Ray Mancuso Pulls Up', kicker: 'SOMETHING’S WRONG', place: 'The curb',
+    engine: 'vote', title: 'Ray Mancuso Pulls Up', kicker: 'SOMETHING’S WRONG', place: at('The curb'), time: when,
     text: () => ['An unmarked Crown Victoria pulls up alongside. The window comes down. It’s Ray Mancuso, on somebody’s payroll, possibly yours. “Evening,” he says. “This is going to cost somebody something.”'],
     options: (c) => [
       { id: 'pay', label: 'Everybody pays Ray', blurb: `${money(10000)} each, out of your own pockets.`, risk: 0.1, reward: 0.2 },
@@ -116,7 +123,7 @@ export const COMPLICATIONS = {
   },
 
   split: {
-    engine: 'choose', title: 'Split Up', kicker: 'WHO DO YOU RUN WITH?', place: 'Three alleys',
+    engine: 'choose', title: 'Split Up', kicker: 'WHO DO YOU RUN WITH?', place: at('Three alleys'), time: when,
     text: () => ['Sirens, three blocks off and getting closer. Split up, in twos. Pick who you run with. If they pick you too, you’ve got each other. If they don’t, you’re on your own.'],
     who: (c) => c.free.map((p) => p.id),
     options: (c, pid) => [{ id: 'with', label: 'Run with…', target: 'other', targets: c.free.map((p) => p.id).filter((id) => id !== pid) }],
@@ -142,7 +149,7 @@ export const COMPLICATIONS = {
   },
 
   photographer: {
-    engine: 'roll', title: 'The Photographer', kicker: 'SOMETHING’S WRONG', place: 'Somewhere with a flash',
+    engine: 'roll', title: 'The Photographer', kicker: 'SOMETHING’S WRONG', place: at('Somewhere with a flash'), time: when,
     text: (c) => [c.rng.pick([
       'A flash goes off. A man with a camera and a press card from the Harbor Courier is backing away very fast.',
       'The photographer has been taking pictures all night. One of them, he says, is “very interesting.” He is already walking towards his car.',
@@ -151,7 +158,12 @@ export const COMPLICATIONS = {
     label: 'Getting the film',
     stakes: 'Miss it and your faces are on page six, and in Prout’s folder.',
     resolve(c, r) {
-      if (r.success) { c.line(c.rng.pick(['The film ended up in the punch bowl. So, briefly, did the photographer.', 'Somebody bought the whole roll for twenty dollars and a very long look.'])); return; }
+      if (r.success) {
+        c.line(c.memo.hall
+          ? c.rng.pick(['The film ended up in the punch bowl. So, briefly, did the photographer.', 'Somebody bought the whole roll for twenty dollars and a very long look.'])
+          : c.rng.pick(['Somebody caught him at his car and bought the whole roll for twenty dollars and a very long look.', 'The film came out of the camera in one long ribbon and went into the nearest trash can, and the photographer went home.']));
+        return;
+      }
       c.line('The photographer got away. Page six tomorrow will be very interesting.');
       c.caseFile(1, 'a photograph in the Courier');
       c.heat(c.rng.pick(c.free).id, 1, 'the photograph');
@@ -159,7 +171,7 @@ export const COMPLICATIONS = {
   },
 
   cake: {
-    engine: 'vote', title: 'The Cake', kicker: 'WHO TAKES THE BLAME?', place: 'The dessert table',
+    engine: 'vote', title: 'The Cake', kicker: 'WHO TAKES THE BLAME?', place: at('The dessert table'), time: when,
     text: () => ['The wedding cake — five tiers, a fountain, two tiny plastic Castellanos on top — is on the floor. Nobody at your table will say who backed into it. Somebody is going to apologise to the bride’s mother, and it is going to cost them.'],
     candidates: (c) => c.free.map((p) => p.id),
     resolve(c, { choice }) {
@@ -170,9 +182,16 @@ export const COMPLICATIONS = {
   },
 };
 
-/** Which complications a given pool can draw. */
+/**
+ * Which complications fit which moment. Nights mostly name their own list;
+ * these are for the common cases.
+ */
 export const POOLS = {
-  heist: ['patrol', 'cleaner', 'dog', 'jammed', 'mancuso', 'split'],
-  street: ['patrol', 'mancuso', 'split', 'dog', 'photographer'],
+  // inside a building, before the money
+  inside: ['cleaner'],
+  // on the way out of a building, with the money
+  out: ['jammed', 'patrol', 'mancuso'],
+  // out on the street, in a car or on foot
+  street: ['patrol', 'mancuso', 'photographer'],
   wedding: ['photographer', 'cake', 'mancuso'],
 };

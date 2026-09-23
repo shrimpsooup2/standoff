@@ -209,11 +209,13 @@ export default {
       d.hauls[id] = 0;
       d.active = d.active.filter((x) => x !== id);
     }
-    b.lines.push(`The alarm went on a ${roll.face}. ${listNames(caught.map((id) => g.name(id)))} ${caught.length === 1 ? 'was' : 'were'} still inside.`);
+    b.lines.push(`The alarm went on a ${roll.face}. ${listNames(caught.map((id) => g.name(id)))} ${caught.length === 1 ? 'was' : 'were'} still ${def.stillIn ?? 'inside'}.`);
     for (const id of caught) c.heat(id, 2, 'caught inside when the alarm went');
     if (d.driver && !d.driverLeft) {
-      c.heat(d.driver, 1, 'the car was still at the curb');
-      b.lines.push(`${g.name(d.driver)} was still at the curb with the engine running. Somebody took the plate.`);
+      // where the car is waiting depends on the job: a curb, an alley, a boat at the stern
+      const caught = def.carCaught?.(c, g.name(d.driver)) ?? `${g.name(d.driver)} was still at the curb with the engine running. Somebody took the plate.`;
+      c.heat(d.driver, 1, 'the car was still waiting when the alarm went');
+      b.lines.push(caught);
     }
     return finish(g, b, def);
   },

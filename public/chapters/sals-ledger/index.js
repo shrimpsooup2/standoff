@@ -234,7 +234,8 @@ export default {
   night: (id) => NIGHTS[id] ?? null,
   beat: (id) => BEATS[id] ?? null,
   complications(pool) {
-    return (POOLS[pool] ?? []).map((id) => ({ id: `complications/${id}`, when: COMPLICATIONS[id].when }));
+    const ids = Array.isArray(pool) ? pool : POOLS[pool] ?? [];
+    return ids.filter((id) => COMPLICATIONS[id]).map((id) => ({ id: `complications/${id}`, when: COMPLICATIONS[id].when }));
   },
   nightNumber: (c, id) => (NIGHTS[id]?.interlude ? null : c.s.week.n),
   secretView: secretText,

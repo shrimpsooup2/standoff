@@ -67,7 +67,7 @@ const ROUTES = {
 
 const collection = {
   id: 'c-collection', title: 'The Collection', day: nightDay, kicker: kick,
-  beats: ['orders', 'holdout', 'rounds', { maybe: 'street', chance: 0.2 }, 'patrol', 'notebook', 'call', 'envelope'],
+  beats: ['orders', 'holdout', 'rounds', { maybe: ['dog', 'photographer'], chance: 0.2, where: (c) => ROUTES[c.flag('cRoute') ?? 'front-street'].label }, 'patrol', 'notebook', 'call', 'envelope'],
   close(c) {
     const r = c.flag('cRoute');
     c.remember(
@@ -233,6 +233,8 @@ const collection = {
 
     rounds: {
       engine: 'grab', time: '11:30 P.M.', place: (c) => ROUTES[c.flag('cRoute') ?? 'front-street'].label, title: 'The Rounds', kicker: 'HOW GREEDY ARE YOU?',
+      carCaught: (c, n) => `${n} was still idling at the end of the block. Somebody on the route wrote down the plate for Ray Mancuso.`,
+      stillIn: 'on somebody’s doorstep with a notebook',
       text: (c) => {
         const d = c.freeByJob('driver');
         return [
@@ -278,7 +280,6 @@ const cardRoom = {
     'the-marker',
     'the-game',
     'the-cop',
-    { maybe: 'street', chance: 0.2 },
     'last-hand',
     'the-house',
     'envelope',
@@ -476,9 +477,11 @@ const cardRoom = {
 
     'the-house': {
       engine: 'report', time: '3:30 A.M.', place: 'The office behind the card room', title: 'The House Take', kicker: 'SOMEBODY COUNTS IT',
+      enter(c) { c.memo.counter = (c.freeByJob('numbers') ?? c.rng.pick(c.free))?.id ?? null; },
+      counter: (c) => c.memo.counter,
       text: (c) => [
-        `The house take goes into a biscuit tin and the biscuit tin goes into the office, where there is room for exactly one person and a calculator. ${c.memo.raided ? 'After the business at table four, half the tables emptied early.' : 'It was a good night.'}`,
-        `${c.freeByJob('numbers')?.name ?? 'Whoever counts'} counts. Whatever they say it comes to is split evenly. Whatever they don’t say, they keep.`,
+        `The house take goes into a biscuit tin and the biscuit tin goes into the office, where there is room for exactly one person and a calculator. ${c.memo.raided ? 'After the business at table four, half the tables emptied early.' : c.memo.cheat ? 'After the Teamster walked out, the room went quiet, and so did the betting.' : c.memo.locked ? 'With the room closed early, it’s a light tin.' : 'It was a good night.'}`,
+        `${c.memo.counter ? c.name(c.memo.counter) : 'Somebody'} counts. Whatever they say it comes to is split evenly. Whatever they don’t say, they keep.`,
       ],
       amount: (c) => Math.max(0, round5k(c.scale(90000) * (c.memo.raided ? 0.55 : 1) * (c.memo.locked ? 0.5 : 1) * (c.memo.cheat ? 0.8 : 1) * (0.85 + c.rng() * 0.3)) + (c.memo.markerBack ?? 0)),
       resolve(c, { reported, counter }) {
@@ -517,34 +520,35 @@ const pages = {
         ];
       },
       openings: () => [
-        { id: 'cash', label: 'Put cash on the counter first',
+        { id: 'cash', label: 'Put cash on the counter first', did: 'put cash on the counter before saying hello',
           yes: 'Benny doesn’t talk until he has seen money. Then he doesn’t stop.',
           no: 'Between family, Benny thinks cash on the counter before you’ve said hello is an insult.' },
-        { id: 'hand', label: 'Ask him whose handwriting it is',
+        { id: 'hand', label: 'Ask him whose handwriting it is', did: 'asked Benny whose handwriting was on the pages',
           yes: 'Benny is very proud that he knew Sal’s hand on sight. Flatter his eye and he’ll deal.',
           no: 'Benny pretends not to read English whenever it suits him. Tonight it suits him.' },
-        { id: 'cat', label: 'Admire the cat',
+        { id: 'cat', label: 'Admire the cat', did: 'admired the cat',
           yes: 'Benny’s cat, Mussolini, is the only living thing Benny loves without conditions.',
           no: 'Mussolini bit Vinnie in 1996. Admiring the cat is taking a side.' },
-        { id: 'nonna', label: 'Mention Nonna Benedetto',
+        { id: 'nonna', label: 'Mention Nonna Benedetto', did: 'mentioned Nonna Benedetto',
           yes: 'Benny was sweet on Nonna Benedetto in 1957, and it makes him soft about anything of Sal’s.',
           no: 'Benny hears the name Benedetto and doubles every price in the shop.' },
       ],
       filler: () => ['Benny’s shop sign has said CLOSING DOWN — EVERYTHING MUST GO since 1991.', 'Benny keeps a shotgun under the counter, and everybody on Fifth Street knows it.'],
-      resolve(c, { success, openingLabel, talker }) {
+      resolve(c, { success, opening, talker }) {
+        const did = { cash: 'put cash on the counter before saying hello', hand: 'asked Benny whose handwriting was on the pages', cat: 'admired the cat', nonna: 'mentioned Nonna Benedetto' }[opening] ?? 'said something';
         c.memo.bennyWarm = !!success;
         c.memo.fenceMult = success ? 0.6 : 1.3;
         c.memo.squeezeMod = success ? 2 : -1;
         c.line(success
-          ? `${c.name(talker)} tried ${lowerFirst(openingLabel)}. Benny put his soup down and took them into the back himself. He is going to be reasonable. He says so.`
-          : `${c.name(talker)} tried ${lowerFirst(openingLabel)}. Benny looked at them with his bad ear turned their way, and when he named his price, it had gone up.`);
+          ? `${c.name(talker)} ${did}. Benny put his soup down and took them into the back himself. He is going to be reasonable. He says so.`
+          : `${c.name(talker)} ${did}. Benny looked at them with his bad ear turned their way, and when he named his price, it had gone up.`);
       },
     },
 
     'the-fence': {
       engine: 'vote', time: '10:00 P.M.', place: 'The back room at Castellano Pawn & Loan', title: 'Benny’s Back Room', kicker: 'A VOTE',
       text: (c) => [
-        `Benny Castellano is eighty, Vinnie’s cousin, and deaf in whichever ear is convenient. Somebody sold him a shoebox last week, and at the bottom of the shoebox are loose pages in Sal Benedetto’s handwriting. ${c.rng.pick(['Benny wants to be paid. Benny always wants to be paid.', 'Benny says he hasn’t read them. Benny has read them.'])}`,
+        `In the back room, under the magnifying lamp, Benny puts a shoebox on the workbench. Somebody sold it to him last week, and at the bottom of it are loose pages in Sal Benedetto’s handwriting. ${c.memo.bennyWarm ? 'Benny is in a good mood, for Benny. He says he’ll be reasonable.' : 'Benny is not in a good mood, and his prices never are either.'} ${c.rng.pick(['Benny wants to be paid. Benny always wants to be paid.', 'Benny says he hasn’t read them. Benny has read them.'])}`,
         'How do they come home?',
       ],
       options: (c) => [
@@ -760,7 +764,7 @@ const pages = {
 
 const ferry = {
   id: 'c-bridge', title: 'The Ferry', act: 3, day: nightDay, kicker: kick,
-  beats: ['customs', 'seven-crates', 'the-split', { if: (c) => c.memo.river, then: 'the-dive', else: 'the-tail' }, { maybe: 'street', chance: 0.2 }, 'coast-guard', 'envelope'],
+  beats: ['customs', 'seven-crates', 'the-split', { if: (c) => c.memo.river, then: 'the-dive', else: 'the-tail' }, { maybe: ['patrol', 'mancuso'], chance: 0.2, where: 'The truck, leaving Pier 14' }, 'coast-guard', 'envelope'],
   close(c) {
     c.remember(
       c.memo.river ? `The Coast Guard reports recovering seven wooden crates from the harbor, empty${c.memo.dived ? '. Witnesses on Pier 14 describe “people swimming, in October, in their clothes.”' : ', and one gym bag, not empty. An investigation is under way.'}`
@@ -821,7 +825,7 @@ const ferry = {
     'seven-crates': {
       engine: 'plan', time: '2:00 A.M.', place: 'Pier 14, the freight ferry', title: 'Seven Crates', kicker: 'EVERYBODY PULLS THEIR WEIGHT',
       text: (c) => [
-        `Seven crates are coming off the 3:15 freight ferry, and they are not full of what the paperwork says. ${vinnie(c)} He wants all seven on a truck by four.`,
+        `${c.memo.customsMod < 0 ? 'Eugene has signed.' : 'Eugene is still watching from the customs hut.'} Seven crates are coming off the 3:15 freight ferry, and they are not full of what the paperwork says. Vinnie wants all seven on a truck by four, and he is standing at the end of the pier in his cardigan to make sure.`,
         'Help (a forklift, a customs man, a boat: $10k), coast, or quietly make it go wrong. Nobody sees who did what.',
       ],
       target: (c) => c.free.length + 5 + (c.memo.customsMod ?? 0),
@@ -894,7 +898,7 @@ const ferry = {
     'coast-guard': {
       engine: 'roll', time: '4:40 A.M.', place: 'The Belt Parkway', title: 'The Coast Guard', kicker: 'GET AWAY',
       getaway: true,
-      text: (c) => [`A Coast Guard cutter is coming round the end of the pier with its light on. ${c.freeByJob('driver')?.name ?? 'Somebody'} has the truck in gear.`],
+      text: (c) => [`${c.memo.dived ? 'The cutter’s light is sweeping the water where the gym bag was, and then the pier, and then the truck.' : 'A Coast Guard cutter is coming round the end of the pier with its light on.'} ${c.freeByJob('driver')?.name ?? 'Somebody'} has the truck in gear.`],
       target: (c) => (c.memo.river ? 6 : 7) + (c.memo.tailMod ?? 0),
       roller: (c) => c.freeByJob('driver')?.id ?? null,
       label: 'Onto the Belt Parkway',
