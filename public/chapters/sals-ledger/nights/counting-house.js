@@ -1,0 +1,129 @@
+// The Counting House: the Bag is short, the trial is close, and there is one
+// room in this city with enough cash in it to fix that.
+
+import { counting, getaway, money, round5k, nightDay, nightKicker } from '../common.js';
+
+const WAYS = {
+  roof: { label: 'Over the roof', alarm: 1, blurb: 'Across from the laundry next door, through the skylight. Everybody has a job and it all has to work.' },
+  fish: { label: 'In the fish truck', alarm: 0, blurb: 'The 4 a.m. delivery from the Fulton Market. You go in under the ice. It’s very cold and it smells exactly how you think.' },
+  inside: { label: 'Through the counter', alarm: -1, blurb: 'The man who counts the money has a gambling problem. For money out of the Bag, he leaves a door open and looks the other way.' },
+};
+
+function way(c) { return c.flag('countingWay') ?? 'fish'; }
+
+export default {
+  id: 'counting-house', title: 'The Counting House', act: 3, day: nightDay, kicker: nightKicker,
+  beats: [
+    'the-plan',
+    { if: (c) => way(c) === 'roof', then: 'skylight' },
+    { if: (c) => way(c) === 'fish', then: 'checkpoint' },
+    { if: (c) => way(c) === 'inside', then: 'the-counter' },
+    { maybe: 'heist', chance: 0.35 },
+    'the-room',
+    'getaway',
+    'count',
+  ],
+  close(c) {
+    const take = c.memo.take ?? 0;
+    c.remember(
+      take ? `Nobody has reported a robbery at the building on Pearl Street that nobody admits is a counting house. Several men were seen standing outside it at dawn, looking at the roof, for a long time.`
+        : 'A delivery truck was stopped on Pearl Street before dawn. The driver said it was fish. It was mostly fish.',
+      { courier: take ? 'PEARL STREET: “NOTHING HAPPENED HERE”' : 'FISH TRUCK STOPPED ON PEARL ST.' },
+    );
+  },
+  defs: {
+    'the-plan': {
+      engine: 'vote', time: '11:00 P.M.', place: 'Nonna’s kitchen, a floor plan on the table', title: 'The Last Job', kicker: 'A VOTE',
+      text: (c) => [
+        `The Bag has ${money(c.bag.total)}. Morty wants ${money(c.bag.target)}. There are two nights left. ${c.rng.pick(['Nonna has not said a word about it, which is how you know.', 'Sal, on the phone this morning, didn’t mention the tomatoes once.'])}`,
+        `Three floors above a laundromat on Pearl Street, ${c.flag('war') ? 'the Castellanos' : 'Big Tommy Russo’s people'} count every dollar that comes out of this neighbourhood before it goes anywhere else. Tonight it’s the week’s whole take. How do you get in?`,
+      ],
+      options: (c) => Object.entries(WAYS).map(([id, w]) => ({
+        id, label: w.label, blurb: w.blurb,
+        risk: id === 'roof' ? 0.6 : id === 'fish' ? 0.5 : 0.3, reward: 0.7,
+        details: id === 'inside' ? [`Costs ${money(c.scale(40000))} out of the Bag.`, 'The alarm starts asleep.'] : id === 'roof' ? ['Hidden effort: everybody pulls their weight, or doesn’t.', 'The alarm starts twitchy.'] : [`A roll at the checkpoint: ${c.odds(2, 7)}.`],
+      })),
+      angles(c) {
+        const ps = c.rng.shuffle(c.free.map((p) => p.id));
+        const out = {};
+        if (ps[0]) { out[ps[0]] = { option: 'inside', text: `Through the counter. The counter is your cousin Richie. For ${money(c.scale(40000))} out of the Bag he’ll leave the door open — and he’ll give you ${money(15000)} of it back, because blood is blood.` }; c.memo.richie = ps[0]; }
+        if (ps[1]) { out[ps[1]] = { option: 'fish', text: 'The fish truck. The driver owes your father a favour from 1998. If it’s the fish truck, the checkpoint is two easier, and you ride up front, warm.' }; c.memo.fishFriend = ps[1]; }
+        for (const id of ps.slice(2)) out[id] = { option: null, text: 'No angle. The Bag is short and this is the last big room in the city.' };
+        return out;
+      },
+      resolve(c, { choice }) {
+        c.set('countingWay', choice);
+        if (choice === 'inside') {
+          const n = c.bagTake(c.scale(40000));
+          c.line(`${money(n)} out of the Bag, in an envelope, to a man who counts money for a living and has a problem with the horses.`);
+          const r = c.memo.richie;
+          if (r && !c.isAway(r)) { c.give(r, 15000, 'cousin Richie'); c.note(r, `Richie slipped ${money(15000)} back into your pocket at the door. “Blood is blood.”`, 'Richie'); c.fact(r, 'angle', `Did ${c.name(r)} get money back from the counter?`, true); }
+        } else {
+          c.line(choice === 'roof' ? 'Over the roof. Somebody goes to buy rope.' : 'The fish truck. Nobody is looking forward to the ice.');
+        }
+      },
+    },
+
+    skylight: {
+      engine: 'plan', time: '3:30 A.M.', place: 'The roof on Pearl Street', title: 'The Skylight', kicker: 'EVERYBODY PULLS THEIR WEIGHT',
+      text: () => ['Rope from the laundry roof, a plank across the gap, and a skylight painted shut in 1970. Everybody has a job.', 'Help (rope, a glass cutter, a man on the corner: $10k), coast, or quietly make it go wrong. Nobody sees who did what.'],
+      target: (c) => c.free.length + 5,
+      cost: () => 10000,
+      labels: () => ({ help: 'Buy the rope and hold the plank', coast: 'Watch the street', sabotage: 'Kick the plank' }),
+      resolve(c, r) {
+        c.memo.inClean = r.success;
+        c.line(r.success ? 'Down through the skylight without a sound. The counting room is right there under you, and it’s full.' : 'The plank went. Somebody went down through the skylight the fast way and landed on a table of money. You’re in — loudly.');
+      },
+    },
+
+    checkpoint: {
+      engine: 'roll', time: '3:50 A.M.', place: 'The loading dock, Pearl Street', title: 'Under the Ice', kicker: 'THE DICE',
+      text: (c) => [`Everybody is under a tarp under four hundred pounds of ice and cod. ${c.memo.fishFriend && !c.isAway(c.memo.fishFriend) ? `Except ${c.name(c.memo.fishFriend)}, who is up front with the heater on.` : ''} The truck stops. A man with a flashlight walks round it, slowly, whistling.`],
+      target: () => 7,
+      mods: (c) => (c.memo.fishFriend && !c.isAway(c.memo.fishFriend) ? [{ label: 'the driver owes a favour', n: 2 }] : []),
+      label: 'Holding your breath under the cod',
+      stakes: 'Miss it and somebody sneezes: you’re in, but the alarm knows it.',
+      resolve(c, r) {
+        c.memo.inClean = r.success;
+        c.line(r.success ? 'The flashlight went past. The truck backed into the dock. You climbed out of the ice smelling like the Friday special and walked straight into the counting room.' : 'Somebody sneezed. The man with the flashlight went for a phone. You’re in, but not for long.');
+      },
+    },
+
+    'the-counter': {
+      engine: 'story', time: '3:50 A.M.', place: 'A side door on Pearl Street', title: 'The Counter', kicker: 'A DOOR LEFT OPEN',
+      run(c) { c.memo.inClean = true; },
+      text: (c) => [`The side door is propped with a phone book. The counter, a thin man in a cardigan, is at his desk with his back to you, listening to the ${c.rng.pick(['racing results', 'Knicks on the radio', 'shipping forecast, for some reason'])} very loudly. He does not turn round. He will swear on his mother that he never turned round.`],
+    },
+
+    'the-room': {
+      engine: 'grab', time: '4:05 A.M.', place: 'The counting room, third floor', title: 'The Counting Room', kicker: 'HOW GREEDY ARE YOU?',
+      text(c) {
+        const d = c.freeByJob('driver');
+        return [
+          `Money on every surface: on the tables, in the drawers, in shoeboxes stacked against the wall with the names of neighbourhoods written on them in marker. It’s the most money anybody here has ever seen in one place.`,
+          `Every round, grab or go. ${c.memo.inClean ? 'Nobody knows you’re here. Yet.' : 'Somebody knows you’re here.'} ${d ? `${d.name} is on Pearl Street with the engine running.` : 'Nobody is watching the car.'}`,
+        ];
+      },
+      vault: (c) => round5k(c.scale(260000) * (0.85 + c.rng() * 0.3)),
+      alarm: (c) => Math.max(0, WAYS[way(c)].alarm + (c.memo.inClean ? 0 : 2)),
+      resolve(c, r) {
+        const total = Object.values(r.hauls).reduce((a, b) => a + b, 0);
+        c.memo.take = total;
+        c.memo.tripped = r.tripped;
+        c.line(total ? `${money(total)} went out of the counting room in laundry bags.` : 'Nobody came out with anything. The biggest room in the city, and nothing.');
+      },
+    },
+
+    getaway: getaway({
+      time: '4:20 A.M.', place: 'Pearl Street',
+      text: (c) => [`${c.memo.tripped ? 'Every light in the building is on.' : 'Pearl Street is empty and grey.'} ${c.freeByJob('driver')?.name ?? 'Somebody'} pulls away from the curb with the laundry bags in the back.`],
+      target: (c) => 7 + (c.memo.tripped ? 1 : 0),
+      heat: 1,
+    }),
+
+    count: counting({ time: '5:30 A.M.', text: (c) => [
+      `Back at Nonna’s at dawn, with laundry bags. The Bag has ${money(c.bag.total)}; Morty wants ${money(c.bag.target)}. This is the count that decides it.`,
+      'Everybody decides, privately, how much of what they’re holding goes in.',
+    ] }),
+  },
+};
