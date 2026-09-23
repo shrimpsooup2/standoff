@@ -81,7 +81,7 @@ export function cardModal(state, ui) {
       a.side = p.cardSide; if (!p.cardSide) ready = false;
     }
   }
-  return `<div class="modal" role="dialog" aria-modal="true">
+  return `<div class="modal" role="dialog" aria-modal="true" data-key="card:${esc(c.uid)}" data-close="closeCard">
     <div class="modal-body">
       <div class="card-face ${c.face}">
         <div class="ct">${c.face === 'down' ? 'Face down — nobody sees it played until Monday' : 'Face up — everybody sees it played'}</div>
@@ -214,8 +214,9 @@ export function dossier(state, ui) {
       ${state.ious.map((o) => `<p class="small">${esc(name(o.from))} owes ${esc(name(o.to))} ${o.pct}% of Monday</p>`).join('')}
     </section>`);
   }
-  return `<div class="modal dossier-modal" role="dialog" aria-modal="true">
+  return `<div class="modal dossier-modal" role="dialog" aria-modal="true" data-key="dossier" data-close="closeDossier">
     <div class="modal-body wide">
+      <div class="modal-top">${cmdBtn('Close', 'closeDossier', {}, { cls: 'ghost-btn small' })}</div>
       <div class="dossier" data-case="${esc(state.code)} · ${esc(you.name)}">
         <h2>${esc(you.name)}</h2>
         ${sections.join('')}

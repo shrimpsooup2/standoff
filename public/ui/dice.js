@@ -23,13 +23,16 @@ export function mini(face) {
 }
 
 /**
- * The first time a roll is seen it tumbles; after that it just sits there.
- * The key is whatever identifies this particular throw.
+ * A throw tumbles for the first second after it is seen; after that it just
+ * sits there. Screens drawn again in that second keep it tumbling rather than
+ * cutting it short. The key is whatever identifies this particular throw.
  */
-const seen = new Set();
-export function isNewRoll(key) {
-  if (seen.has(key)) return false;
-  seen.add(key);
-  if (seen.size > 400) seen.clear();
-  return true;
+const TUMBLE_MS = 1100;
+const seen = new Map();
+export function isNewRoll(key, now = Date.now()) {
+  if (!seen.has(key)) {
+    if (seen.size > 400) seen.clear();
+    seen.set(key, now);
+  }
+  return now - seen.get(key) < TUMBLE_MS;
 }

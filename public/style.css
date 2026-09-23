@@ -186,7 +186,7 @@ p { margin: 0 0 10px; }
 
 main {
   max-width: 900px; margin: 0 auto;
-  padding: clamp(16px, 3vw, 30px) var(--pad) 220px;
+  padding: clamp(16px, 3vw, 30px) var(--pad) 140px;
   position: relative; z-index: 10;
 }
 .row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; margin-top: 12px; }
@@ -573,12 +573,14 @@ button.mode-btn:hover:not(:disabled) { transform: translateY(-2px); box-shadow: 
 .hand-wrap {
   position: fixed; left: 0; right: 0; bottom: 0; z-index: 330;
   padding-bottom: env(safe-area-inset-bottom, 0px); pointer-events: none;
-  transform: translateY(calc(100% - 64px)); transition: transform 0.3s cubic-bezier(.2, .8, .3, 1);
+  /* put away, only the tab shows: the cards never sit on top of what you're reading */
+  transform: translateY(calc(100% - var(--tab-h) - env(safe-area-inset-bottom, 0px))); transition: transform 0.3s cubic-bezier(.2, .8, .3, 1);
+  --tab-h: 34px;
 }
 .hand-wrap.open { transform: translateY(0); }
 @media (hover: hover) { .hand-wrap:hover { transform: translateY(0); } }
 .hand-tab {
-  display: block; margin: 0 auto 6px; pointer-events: auto;
+  display: block; margin: 0 auto 6px; pointer-events: auto; height: var(--tab-h); box-sizing: border-box;
   background: linear-gradient(180deg, #123528, #0b2118); color: rgba(242, 232, 213, 0.82);
   border: 1px solid rgba(242, 232, 213, 0.26); border-bottom: none; border-radius: 10px 10px 0 0; padding: 8px 18px;
   font-size: 10px; letter-spacing: 0.2em; box-shadow: 0 -4px 16px rgba(0, 0, 0, 0.5);
@@ -611,6 +613,8 @@ button.mode-btn:hover:not(:disabled) { transform: translateY(-2px); box-shadow: 
 
 .modal { position: fixed; inset: 0; z-index: 800; display: flex; align-items: flex-start; justify-content: center; background: rgba(4, 14, 10, 0.9); padding: 6vh var(--pad) 30px; overflow-y: auto; }
 .modal-body { max-width: 460px; width: 100%; }
+.modal-top { position: fixed; top: 10px; right: 12px; z-index: 810; }
+.modal-top .ghost-btn { background: rgba(6, 20, 15, 0.92); }
 .modal-body.wide { max-width: 640px; }
 .card-face {
   background: linear-gradient(160deg, #fdfaf0, #e9dcc0); color: var(--ink);
@@ -710,7 +714,13 @@ button.mode-btn:hover:not(:disabled) { transform: translateY(-2px); box-shadow: 
   .wordmark { display: none; }
   .chip { font-size: 10px; padding: 2px 6px; }
   #dossierBtn { padding: 6px 8px; font-size: 10px; letter-spacing: 0.08em; }
-  .timer { max-width: 90px; }
+  /* the header is too narrow for the night's name; the timer runs along its foot */
+  .chrome { grid-template-columns: auto 1fr; }
+  .chrome-mid { position: absolute; left: 0; right: 0; bottom: 0; }
+  .phase-label { display: none; }
+  .timer { width: 100%; max-width: none; height: 2px; border-radius: 0; }
+  /* on a phone the seats scroll away with the page instead of covering the story */
+  .rail { position: relative; top: auto; }
   .seat { min-width: 98px; padding: 6px 9px; }
   .pcard { width: 112px; height: 164px; margin: 0 -24px; }
   .dossier h2 { padding-right: 0; margin-top: 12px; }

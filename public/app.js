@@ -9,6 +9,7 @@ import { esc, money, heatPips } from './ui/util.js';
 import { door, lobby, table, passCard, monday, titleCard, chatBox } from './ui/screens.js';
 import { seats, handDock, cardModal, dossier } from './ui/panels.js';
 import { CATALOGUE, DEFAULT_CHAPTER } from './chapters/index.js';
+import { morph } from './ui/morph.js';
 
 const $ = (sel) => document.querySelector(sel);
 const app = $('#app');
@@ -435,12 +436,12 @@ function paint() {
   renderChrome();
   if (!state) {
     rail.classList.add('hidden');
-    dock.innerHTML = '';
-    modal.innerHTML = '';
-    app.innerHTML = door({
+    morph(dock, '');
+    morph(modal, '');
+    morph(app, door({
       ui, catalogue: CATALOGUE, canHost: canHost(), signalProblem,
       joinCode: mode ? null : codeFromUrl(), name: ui.pick.name ?? me.name ?? '',
-    });
+    }));
     return;
   }
   const ctx = {
@@ -448,7 +449,7 @@ function paint() {
     shared: state.local?.stage === 'shared' || (state.local && !['private'].includes(state.local.stage) && isDevice()),
   };
   rail.classList.toggle('hidden', state.phase === 'lobby');
-  rail.innerHTML = seats(state, { me: ctx.shared ? null : viewerId() });
+  morph(rail, seats(state, { me: ctx.shared ? null : viewerId() }));
 
   let body;
   if (state.phase === 'lobby') body = lobby({ ...ctx, invite: inviteBlock(), me: viewerId() });
@@ -463,16 +464,18 @@ function paint() {
   if (state.phase === 'playing' && state.isHost && !isDevice()) {
     body += `<div class="host-bar"><button class="link-btn" data-act='${JSON.stringify({ t: 'skip' })}' title="Fill in whatever the slow ones haven’t decided, and move on">${mode === 'solo' ? 'Skip ahead' : 'Host: move things along'}</button></div>`;
   }
-  app.innerHTML = body;
+  morph(app, body);
+  // new table talk scrolls into view; reading back up the log is left alone
   const log = app.querySelector('.chat-log');
-  if (log) log.scrollTop = log.scrollHeight;
+  const said = state.chat?.length ?? 0;
+  if (log && said !== ui.chatSeen) { log.scrollTop = log.scrollHeight; ui.chatSeen = said; }
 
   const showPrivate = state.you && !ctx.shared && ctx.local?.stage !== 'pass';
-  dock.innerHTML = state.phase === 'playing' && showPrivate ? handDock(state, ui) : '';
+  morph(dock, state.phase === 'playing' && showPrivate ? handDock(state, ui) : '');
   let m = '';
   if (showPrivate && ui.card) m = cardModal(state, ui);
   else if (showPrivate && ui.dossier) m = dossier(state, ui);
-  modal.innerHTML = m;
+  morph(modal, m);
   bringIntoView();
 }
 
@@ -591,6 +594,8 @@ const COMMANDS = {
 };
 
 document.addEventListener('click', (ev) => {
+  // a tap on the dark around a card or the dossier puts it away
+  if (ev.target.matches?.('.modal[data-close]')) { COMMANDS[ev.target.dataset.close]?.(); return; }
   const el = ev.target.closest('[data-act], [data-cmd]');
   if (!el || el.disabled) return;
   if (el.dataset.act) {

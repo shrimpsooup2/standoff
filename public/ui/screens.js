@@ -138,7 +138,7 @@ function sceneHeader(state) {
 export function titleCard(state) {
   const sc = state.scene;
   if (!sc) return '';
-  return `<div class="title-card" aria-hidden="true"><div class="tc-inner">
+  return `<div class="title-card" aria-hidden="true" data-key="${esc(`${sc.nightId}:${sc.title}:${sc.day}`)}"><div class="tc-inner">
     <span class="sc-kicker">${esc(sc.kicker ?? '')}</span>
     <span class="tc-title">${esc(sc.title ?? '')}</span>
     <span class="sc-day">${esc(sc.day ?? '')}</span>
@@ -149,7 +149,7 @@ function beatCard(state) {
   const b = state.beat;
   const where = [b.time, b.place].filter(Boolean).join(' · ');
   if (b.headline) {
-    return `<article class="courier">
+    return `<article class="courier" data-key="${esc(b.key)}">
       <div class="masthead">THE HARBOR COURIER<span>${esc(state.scene?.day ?? '')} · 25¢</span></div>
       <h2>${esc(b.headline)}</h2>
       ${paras(b.text.slice(0, 1))}
@@ -157,7 +157,7 @@ function beatCard(state) {
       ${paras(b.text.slice(1))}
     </article>`;
   }
-  return `<article class="eventcard beat">
+  return `<article class="eventcard beat" data-key="${esc(b.key)}">
     ${where ? `<div class="where">${esc(where)}</div>` : ''}
     <h2>${esc(b.title)}</h2>
     ${b.kicker ? `<div class="kicker">${esc(b.kicker)}</div>` : ''}

@@ -163,7 +163,7 @@ export function windowPanel(ctx) {
   const tieFace = w.faces ? w.faces.find((f) => f.faces.includes(face)) : null;
   const makes = w.target != null ? w.total >= w.target : null;
   const hot = (f) => !!w.faces?.some((x) => x.faces.includes(f));
-  const out = [`<div class="felt-dice${fresh ? ' fresh' : ''}">`];
+  const out = [`<div class="felt-dice${fresh ? ' fresh' : ''}" data-key="w${esc(w.id)}">`];
   out.push(`<div class="dice-row">${w.dice.map((f) => die(f, { size: 84, rolling: fresh, hot: hot(f) })).join('')}</div>`);
   out.push(`<div class="dice-sum">${w.mods.length ? `${w.dice.join(' + ')} ${w.mods.map((m) => `${m.n >= 0 ? '+' : '−'} ${Math.abs(m.n)} <small>${esc(m.label)}</small>`).join(' ')} = ` : ''}<b>${w.total}</b>${w.target != null ? ` <span class="vs">needs ${w.target}</span>` : ''}</div>`);
   if (makes != null) out.push(`<div class="verdict-line ${makes ? 'good' : 'bad'}">${makes ? 'IT’S GOOD — for now' : `SHORT BY ${w.target - w.total} — for now`}</div>`);
