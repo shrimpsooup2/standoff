@@ -209,8 +209,10 @@ Some nights add a fourth, just for that night: **an angle**, a private reason to
 | **The Muscle** | Once a night, add 2 to a roll. |
 | **The Cousin** | Nonna likes you. Once a week, she settles a tie your way. |
 | **The New Guy** | You hold four cards instead of three. Nobody trusts you, which is fair. |
-| **The Fixer** | Once a week, make a spoken promise binding. The game enforces it. |
-| **The Lookout** | In any heist, you see the first alarm die before anybody decides. |
+| **The Fixer** | Once a week, after a vote is shown, move one person's vote. |
+| **The Mechanic** | Once a week, turn a failed getaway into a clean one. |
+| **The Altar Boy** | Father Dominic owes you: once a week, a word comes off your seat for free. |
+| **The Lookout** | In any heist, you see each alarm die before anybody decides. |
 
 ### Secrets
 
@@ -447,14 +449,16 @@ Randomness belongs everywhere, in the open.
 
 ### The Verdict
 
-Monday comes down to one roll: two dice, needing **4 + the Case File** or more. Every $50k the Bag is over Morty's target lowers that by one. Falling short raises it by three — Morty phones it in.
+Monday comes down to one roll: two dice, needing **4 + the Case File** or more. Every tenth of Morty's number the Bag is over lowers that by one; every tenth it's short raises it by one — up to three either way. *(Built: a flat "short means +3" made small tables hopeless, because a Bag a little short and a Bag empty looked the same.)*
 
 | Case File | The Bag | Sal walks on | Chance |
 |---|---|---|---|
-| 1 | $50k over | 4+ | 92% |
+| 2 | 20% over | 4+ | 92% |
 | 2 | on target | 6+ | 72% |
 | 4 | on target | 8+ | 42% |
-| 4 | short | 11+ | 8% |
+| 4 | 30% short | 11+ | 8% |
+
+A bigger crew leaves a bigger trail: the folder starts at 2, or 3 from seven players, or 4 from nine. Heat cools by one for anybody who kept their head down the night before, so lying low is a real choice.
 
 Name the rat correctly and the Case File drops by three before the roll. Nonna's ring gives one reroll. And somebody at the table is always holding a Black Cat.
 

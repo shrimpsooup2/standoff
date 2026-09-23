@@ -143,3 +143,9 @@ export function biggestGiver(c) {
   }
   return best && best.n > 0 ? best.id : null;
 }
+
+/** "A shoebox of fifties" → "a shoebox of fifties", but "Sal’s watch" stays Sal’s. */
+export function lowerFirst(label) {
+  const s = String(label ?? '');
+  return /^(A|An|The|Another)\b/.test(s) ? s[0].toLowerCase() + s.slice(1) : s;
+}

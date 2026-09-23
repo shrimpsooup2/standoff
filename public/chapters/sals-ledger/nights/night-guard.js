@@ -1,7 +1,7 @@
 // The Night Guard: the evidence warehouse on Pier 9, where Prout keeps
 // everything he took out of Sal's house.
 
-import { counting, money, round5k, nightDay, nightKicker, share } from '../common.js';
+import { counting, money, round5k, nightDay, nightKicker, share, lowerFirst } from '../common.js';
 
 const LENNY = {
   whoLabel: 'Lenny Russo, night guard, Pier 9',
@@ -222,7 +222,7 @@ export default {
           const it = items.find((x) => x.id === id);
           if (it.kind === 'cash') {
             c.give(pid, it.value, 'Sal’s box');
-            c.line(`${c.name(pid)} took ${it.label.toLowerCase()}: ${money(it.value)}, counted later, in private.`);
+            c.line(`${c.name(pid)} took ${lowerFirst(it.label)}: ${money(it.value)}, counted later, in private.`);
           } else if (it.kind === 'page') {
             if (it.about === pid) {
               c.line(`${c.name(pid)} took the page with their own name on it and ate it. Actually ate it. Nobody will ever know what it said.`);
@@ -236,14 +236,14 @@ export default {
             c.card(pid, it.card);
             if (it.card === 'the-photo') { c.set('photoGiven', pid); c.note(pid, 'Somebody found a tape player. On the tape: Prout, at a Castellano wedding, very drunk, giving a toast. There is also a photograph in the case. You have it now.', 'the cassette'); }
             if (it.card === 'seed-tin') c.set('seedTinGiven', pid);
-            c.line(`${c.name(pid)} took ${it.label.toLowerCase().replace(/^a /, 'a ')}.`);
+            c.line(`${c.name(pid)} took ${lowerFirst(it.label)}.`);
           }
         }
         const left = items.filter((it) => !it.taken);
         for (const it of left) {
           if (it.kind === 'page') c.caseFile(1, `Prout still has the page with ${c.name(it.about)}’s name on it`);
         }
-        if (left.length) c.line(`Left in the box for Prout: ${left.map((it) => it.label.toLowerCase().replace(/ — .*/, '')).join(', ')}.`);
+        if (left.length) c.line(`Left in the box for Prout: ${left.map((it) => lowerFirst(it.label.replace(/ — .*/, ''))).join(', ')}.`);
       },
     },
 

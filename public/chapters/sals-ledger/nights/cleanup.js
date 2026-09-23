@@ -1,6 +1,6 @@
 // The Cleanup: the Case File is too thick. Tonight some of it goes missing.
 
-import { counting, money, round5k, nightDay, nightKicker } from '../common.js';
+import { counting, money, round5k, nightDay, nightKicker, lowerFirst } from '../common.js';
 
 const MARJORIE = [
   { id: 'flowers', label: 'Flowers, and “Mr. Prout asked me to bring these up.”',
@@ -155,7 +155,7 @@ export default {
         let burned = 0;
         for (const [pid, id] of Object.entries(picks)) {
           const it = items.find((x) => x.id === id);
-          if (it.kind === 'burn') { burned += 1; c.caseFile(-1, `${c.name(pid)} burned ${it.label.toLowerCase()}`); }
+          if (it.kind === 'burn') { burned += 1; c.caseFile(-1, `${c.name(pid)} burned ${lowerFirst(it.label)}`); }
           else if (it.kind === 'gary') { burned += 2; c.set('gary', 'burned'); c.caseFile(-2, `${c.name(pid)} burned Gary Feld’s statement`); }
           else if (it.kind === 'person') {
             if (it.about === pid) { burned += 1; c.p(pid).heat = Math.max(0, c.p(pid).heat - 1); c.line(`${c.name(pid)} took their own file and burned it in a wastepaper basket.`); c.caseFile(-1, `a file went up in smoke`); }

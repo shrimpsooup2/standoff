@@ -1,213 +1,129 @@
 # STANDOFF
 
-A multiplayer game of trust, betrayal and organised crime, for a group of friends
-who would like to find out some things about each other.
+A game of trust, betrayal and organised crime, told one night at a time. Bring
+friends. Lose them.
 
-It is a prisoner's dilemma wearing a very nice suit and holding a hand of cards.
+STANDOFF is a game of chapters. Each chapter is one story — its own week, its own
+people, its own ending — played over about an hour by two to ten people, each on
+their own phone or passing one around.
+
+## Chapter 1: Sal's Ledger
+
+> Monday, 6:10 a.m. Salvatore "Sal" Benedetto — seventy-one, neighbourhood
+> institution, three-time winner of the St. Anthony's tomato fair — is arrested in
+> his bathrobe, in his own garden, holding a watering can.
+>
+> The charge is tax fraud. The problem is the ledger: thirty-one years of every
+> favour, payoff and debt in this neighbourhood, in Sal's handwriting, and it is no
+> longer where Sal left it.
+>
+> Assistant District Attorney Wendell Prout wants the ledger. The Castellanos across
+> the river want the neighbourhood. Sal's lawyer wants money by next Monday.
+>
+> Sal wants you.
+
+Two things sit in the middle of the table all week. **The Bag** — a 1994 Knicks gym
+bag on Nonna's kitchen table — is money for Sal's lawyer. **The Case File** is
+Prout's folder, and every mistake goes in it. On Monday the two of them set the odds
+of one roll of two dice, the **Verdict**. If Sal walks, the crew is paid. If he goes
+down, he names names, and everybody without a deal loses half.
+
+Then the richest person at the table wins.
+
+### Three things on your phone
+
+- **A job.** The Talker, the Driver, the Numbers Guy, the Muscle, the Cousin, the
+  Fixer, the Lookout, the Mechanic, the Altar Boy, the New Guy. Everybody knows
+  yours. Each does one thing.
+- **A secret.** What you want this week besides the obvious: skim the Bag and still
+  see Sal walk, keep somebody out of jail who doesn't know you're trying, see
+  somebody else finish last, get Nonna her ring back. From five players, one of you
+  is wearing Prout's wire.
+- **Cards.** Loaded Die, Black Cat, Snitch, Forgery, Fall Guy, Dirt, the Don's Ring,
+  Musical Chairs and thirty-odd more. One sentence each. Face-up cards are
+  announced; face-down ones come out on Monday.
+
+### A night is a story
+
+Every night is a short episode of four to six beats, each one a different kind of
+decision, with a time and a place on it:
+
+> **10:15 p.m. — The Napkin.** Three banks on a napkin. A vote, and some of you have
+> a private reason to want one of them. A tie goes to a die that shows which faces
+> mean which bank before it lands.
+>
+> **11:40 p.m. — The Door.** One of you talks to whoever's on the door. Everybody
+> else holds one fact about them, and passes it on — as written, turned around, or
+> not at all.
+>
+> **11:52 p.m. — The Vault.** Grab or go, round after round, while the alarm gets
+> twitchier. The Driver decides when the car leaves.
+>
+> **12:04 a.m. — The Car.** Two dice on the felt, and a moment for anybody holding
+> something that bends them.
+>
+> **12:40 a.m. — Counting It Out.** How much of what you took goes in the Bag.
+
+After Night One the director picks what comes next from what already happened:
+rob the Castellanos' own bank and the next night is their retaliation. Across the
+week there are thirteen nights to draw from — a warehouse full of Sal's things on
+Pier 9, a fight on a casino boat, a Castellano wedding, an accountant in room 14 of
+a motel, Father Dominic's tapes, Nonna's ring in a pawn shop window, an armored car
+and a gym bag on the hood of a car at the end of a pier — and every one of them
+branches, picks complications at random, and changes its details, so no two weeks
+play the same. Between nights: the morning paper, Sal calling from county, a card
+each. Twice a week, Prout sees everybody alone.
+
+### Who knows what
+
+Your cash is exact on your screen; everybody else's shows as a band — *broke*,
+*getting by*, *flush* — until something opens their pockets. The Bag's total is
+public; who put in what is not, except to the Numbers Guy. Anything said out loud
+can be a lie. A doctored note in the Whispers is caught when every card is shown
+next to every note — unless you held a Forgery — and one card in six is simply
+wrong, and marked as such, so nobody can hide behind it.
+
+The design, and the reasons for it, are in [`docs/COMPASS.md`](docs/COMPASS.md).
 
 ## Play it
 
-**Three ways, and they all use the same game.**
-
 | | |
 |---|---|
-| **New table** | Everybody on their own phone. One person runs the server and puts a QR code on the table; everybody else points a camera at it. |
-| **One device** | Pass the phone around the table. It hides everybody's business between turns with a "hand it to Mo" card. |
-| **Against the ghosts** | On your own, against bots with fixed, legible habits. |
+| **Host a table** | Everybody on their own phone. The lobby shows a QR code and a link; everybody else scans it and types a name. |
+| **Pass one device around** | One phone or laptop for the whole table. Anything private asks to be handed to the right person first. |
+| **Play solo** | You against a table of ghosts with their own habits. |
 
 ```
 node server.js      # then open http://localhost:8787
 ```
 
-The host is just somebody's laptop. The lobby shows a QR code and a link, both
-pointing at the machine's address on the wifi rather than at localhost, so
-joining is one scan and a name. The four letters still work for anybody who
-would rather type them.
+No dependencies, no build step, no accounts. The host is somebody's laptop; the QR
+code points at its address on the wifi rather than at localhost.
 
-No dependencies, no build step, no accounts, and nothing that needs the
-internet. The QR encoder is thirty lines of tables and a Reed-Solomon
-remainder, in `public/qr.js`, rather than a package.
+**On GitHub Pages** (or any static host) there is no server, so the whole engine
+runs in the browser. Pass-and-play and solo work as they do anywhere. For phones on
+different devices, the tab that opens the table becomes the table, and the others
+reach it directly over WebRTC — they only need a small introduction service to
+find each other, which is `/signal` on the Node server, or anywhere you deploy it
+(`render.yaml` and a `Dockerfile` are included). Point `public/config.js` at it, or
+add `?signal=wss://…` to the URL. Game traffic never touches it.
 
-### Start with a First Night
-
-Before the real thing, the host can deal **FIRST NIGHT**: three short scripted jobs
-with somebody in-character talking the table through them. It takes about five
-minutes, it is a real game with real money and a little ledger at the end, and none
-of it counts.
-
-It teaches in order — a straight two-way choice, then a job with four ways out and
-the whispers and pledges, then the whole table and the cards — and it shapes itself
-around who turned up. Two people never get a whole-table round, because there is no
-table. There are three variations (a bakery, a pier, a social club) so the second
-group you teach does not sit through the same script, and it will not deal you the
-same one twice in a row. When it ends, the button says **NOW PLAY IT FOR REAL** and
-everything that was left out — the rat, the heat, the events, the acts — comes back on.
+`.github/workflows/pages.yml` publishes `public/` on every push to the default
+branch.
 
 ### Built to survive the evening
 
-The laptop will be closed, slept, unplugged and carried into another room, and the
-wifi will drop at least once. None of that is allowed to end the game:
-
-- **The night is on disk.** Every change is written atomically, so a crash, a restart
-  or a flat battery picks up the same round, the same jobs, the same hands and the
-  same money. The generator is one 32-bit number, so a resumed game deals exactly
-  the cards it was always going to deal.
-- **Reconnection is automatic.** Close the tab, change wifi, lock the phone — you get
-  your seat, your secret card and your hand back. Anything you tapped while the
-  connection was away is queued and sent when it returns.
-- **The host is whoever is in the room.** If the person who opened the table walks
-  out, somebody else picks up the controls immediately.
-- **Nothing a client sends can take it down.** Malformed messages, enormous payloads,
-  deeply nested objects and floods are all handled; a flood gets told to slow down
-  rather than thrown out. One broken table can never stop the others.
-- **A dead disk is not a dead game.** If it cannot write — read-only folder, full
-  disk, a filesystem that simply stops answering — it says so once and keeps playing.
-
-All of that is covered by tests that actually do it: SIGTERM and SIGKILL mid-round,
-the host walking out, garbage down the socket, two devices on one seat.
-
-**On GitHub Pages** (or any static host) there is no server to keep a socket open,
-so the client runs the whole engine in the browser: *one device* and *against the
-ghosts* work exactly as they do locally, and the online option hides itself when
-nobody answers. `.github/workflows/pages.yml` publishes `public/` on every push to
-`main`; turn on Pages → Source: GitHub Actions and it deploys itself.
-
----
-
-## What happens
-
-The night runs in **three acts**. Act One is small stuff and everybody still being
-polite. Act Two is when somebody has been talking and the theories start costing
-money. Act Three is one room, one door, everything paying triple.
-
-Each round, the table is cut into pairs — sometimes threes, every third job the
-whole table at once — and each pair gets a **job**: a short, specific, generated
-piece of organised-crime trouble you are both already in.
-
-A truck of haddock that is not haddock. A second set of books piped in blue gel
-onto sheet cakes, one of which went to a christening. A confession sung to the tune
-of *New York, New York* at somebody's fiftieth. Eleven years of the same alibi in
-the same eleven words, which the cell tower data has just contradicted. A tunnel
-that is forty-one feet long and stops eleven feet short of anything.
-
-### Every job offers its own way out
-
-There is no "cooperate" button. Each job offers the two, three or four things
-actually available to somebody standing in that particular room, and they are
-different every time. At the christening you can say baskets are baskets, quietly
-make up the missing number out of your own pocket, blame the function-room staff
-and cost a banqueting manager his job, or point at the eleven feet of driveway
-that only your friend walked down. On the ferry you can insist it is sports
-equipment, disclaim the tarp entirely and lose the load, or claim it loudly and
-demand a warrant — which either makes everything inside inadmissible forever or
-signs your name to it.
-
-None of them is the decent option. Every one of them costs somebody something,
-and what is *worth* doing depends entirely on what you think everybody else is
-about to do:
-
-| | |
-|---|---|
-| **hold the line** | Everything in. Best for the room, worst for you if the room does not do the same. |
-| **give them something** | Half in, half kept. Costs you if the room holds, covers you if it doesn't. |
-| **cover yourself** | Almost nothing in, and a floor under you. You will not do well. You cannot do badly. |
-| **bet on the room** | Pays far above anything else — but only if everybody genuinely holds. |
-| **make it cost them** | Strips most of what anybody who kept theirs was keeping. Costs you if nobody did. |
-| **take the weight** | More than your share goes in. It costs you and it makes everybody else richer. |
-
-Betting on the room wins when the room holds. Covering yourself wins when it
-doesn't. Nothing wins both ways, so every round is a read on the people in it.
-
-Roughly one round in six goes **loud**. Same dilemma, no chairs: a prison wall
-and two hundred feet of knotted bedsheet that holds one man at a time; a freight
-car with no brakes and a handbrake wheel that needs two people; nine feet between
-two roofs and a plank that takes a man at each end. Cooperating costs you your body
-instead of your freedom — hold the door, take your end, lie flat and crawl — and
-defecting is just running. Loud rounds pay more, run on a shorter clock, and get
-likelier as the night goes on.
-
-Then:
-
-1. **The job** — everyone reads the dossier and the night's twist.
-2. **Table talk** — a private whisper to your partner, the option to formally
-   **give your word**, and one card from your hand.
-3. **The squeeze** — separately, alone, you choose. **Hold the line**, or **take
-   the deal**. No take-backs.
-4. **The reckoning** — everything revealed and narrated: who held, who folded, who
-   swore on it first.
-5. **Between jobs** — an event lands on the table. Sometimes the table has to vote.
-
-After the last job the **ledger** opens: the money, the secret cards, what actually
-happened versus what the table was told, and a web of every bond at the table drawn
-in green and red.
-
-## Where it stops being a prisoner's dilemma
-
-The base game is the real thing: `T > R > P > S`, `2R > T + S`, generated fresh per
-job so the size of the temptation keeps moving. On top of that:
-
-**The hand.** Everybody holds cards and may play one a round, before choosing.
-**Face-up** cards are announced the moment they hit the table — *The Muscle* ("fold
-on me and you forfeit the lot"), *The Shakedown*, *The Godfather*, *The Loan Shark*.
-**Face-down** cards stay secret until the reckoning — *The Alibi* (you fold and the
-table is shown you holding, and the record agrees), *Insurance*, *The Lookout*,
-*The Set-Up*, *The Priest*, which quietly cancels whatever was aimed at you.
-
-**Heat.** A table-wide meter. Every fold makes noise, every held line quiets it
-down. The louder the table gets, the sweeter the DA's offers become — and at
-boiling point the vans arrive at six in the morning and everybody pays.
-
-**The loud ones.** 18 action jobs that show up rarely and mix in with everything
-else — a ladder in a prison yard that somebody has to foot, a lifeboat rated for
-six with more than six of you at the davits, a twin-engine plane four hundred
-pounds over on a short strip where four hundred pounds is either the bags or two
-people. These get their own ways out too: on the burning stairwell you can hold
-the door, wedge it with a fire bucket and go, or run *down* through the smoke on
-the theory that only the ground floor is alight.
-
-**Callbacks.** The game remembers. Put two people back in a room and the job is
-built out of what they actually did to each other: a ninety-minute drive with the
-person who folded on you at the haddock thing, a Sunday dinner where the seats were
-decided in 1994, a vouch that ties you to somebody who has already sold you once.
-
-**Events and votes.** Between jobs: funerals everybody pays into, audits that go
-straight for whoever is winning, amnesties, leaks, a phone call somebody took that
-nobody can identify. With five or more, the table votes out loud, with their names
-on it: who takes the fall, who gets made, who has to sit the next one out.
-
-**Secret cards.** Dealt at the start, turned over at the ledger. The Rat is paid by
-the DA per betrayal. The Saint only profits by never folding once. The Widow
-profits from being betrayed. The Bookkeeper skims the whole table and therefore
-quietly needs everyone to get along.
-
-**Markers.** Fold on somebody who held and they walk away holding a marker. Call it
-in later and their next betrayal costs them the entire take.
-
-**Twists.** Announced before anyone talks. *Honour Among Thieves* triples mutual
-loyalty and turns the round into a stag hunt. *The Wire* leaks whoever locks in
-first. *Blind Alley* seals the whole round until the ledger. *The Switcheroo*
-re-cuts the pairs **after** table talk, so your promise ends up in somebody else's
-hands.
-
-## It changes shape with the table
-
-The night is dealt differently depending on who turned up, and the lobby shows you
-the shape before you start:
-
-| | |
-|---|---|
-| **2 — The Two-Hander** | Every job is the two of you, with a full memory of it. No rat, no votes, nowhere to hide. Seven rounds. |
-| **3 — The Three-Hander** | Pairs and three-handed rooms where the arithmetic of loyalty turns cruel. The Rat arrives. |
-| **4–6 — The Crew** | Whole-table jobs every third round, events between them, and votes with everybody's name attached. |
-| **7–10 — The Family** | The table splits into two crews with a shared purse. More events, bigger votes, four cards in hand. |
-
-## The bonds
-
-The point of the ledger isn't the money. It's the record: who held for whom, how
-many times, and who was first to stop. Every pair who were ever in a room together
-gets a line — green if it stayed clean, red if it didn't — plus the awards nobody
-wants (THE MARK, OATHBREAKER, JUDAS) and the ones people are oddly proud of (BLOOD
-BROTHERS, THE MAGICIAN: folded, and the table never found out).
+- **The week is on disk.** Every change is written atomically; a crash, a restart
+  or a flat battery picks up the same beat, the same hands and the same money. The
+  random generator is one 32-bit number, so a resumed game deals exactly the cards
+  it was always going to deal.
+- **Reconnection is automatic.** Reload, change wifi, lock the phone — you get your
+  seat back, and anything you tapped while the connection was away is sent when it
+  returns.
+- **The host is whoever is in the room.** If the person who opened the table leaves,
+  somebody else picks up the controls.
+- **Nothing a client sends can take it down**, and one broken table can never stop
+  the others.
 
 ## Running it
 
@@ -215,57 +131,42 @@ BROTHERS, THE MAGICIAN: folded, and the table never found out).
 |---|---|
 | `npm start` | serve on `http://localhost:8787` |
 | `PORT=3000 npm start` | serve somewhere else |
-| `npm test` | 76 tests: the balance of every move, that the books add up, card rules, seizure ordering, every mix of moves narrating at every table size, information hiding, the tutorial at every group size, a full night over real sockets, and a host that gets restarted, killed, flooded and fed garbage |
+| `npm test` | whole weeks played by bots at every table size and both lengths, state saved and restored mid-game, views that keep secrets, pass-and-play and solo driven like the screens drive them, a week over real sockets, and a host that gets restarted, killed, flooded and fed garbage |
 | `npm run dev` | restart on save |
-
-Sessions survive a dropped connection — reopen the page and you get your seat, your
-card, your hand and your job back.
 
 ## Layout
 
 ```
-server.js              http + static files + the socket upgrade + /signal
-src/net/wss.js         a small RFC 6455 server, no dependencies
-src/broker.js          introduces two browsers to each other, and never sees the game
-src/persist.js         the night on disk, atomically, with a deadline on every write
-public/game/           the engine — plain ES modules, so it runs on both sides
-  engine.js            the state machine: act, deal, talk, squeeze, reckoning, event, vote, ledger
-  scenarios.*.js       the writing — desk jobs, the loud ones, callbacks, and the grammar that varies them
-  cards.js             the hand
-  events.js            what happens between jobs
-  director.js          acts, crews, heat, and how the night scales with the table
-  tutorial.js          First Night: three variations of a five-minute lesson
-  options.js           the moves, what they trade off, and one resolver for any room size
-  payoffs.js           the size of the stake
-  roles.js twists.js bots.js
-public/net/room.js     tables, seats, tokens, host migration — the same file the server runs
-public/net/local.js    the engine running in the page: pass-and-play and solo
-public/net/peer.js     browser-hosted multiplayer over WebRTC, for static hosting
-public/config.js       the one setting: where browsers get introduced to each other
-render.yaml Dockerfile deploying that introduction service without a terminal
-public/app.js          one page, one render function, four transports
-public/style.css       the table: green baize, one hard light, and paper you can pick up
-public/qr.js           a QR encoder, so joining is a scan instead of a spelling test
+server.js                   http, static files, the socket upgrade, and /signal
+src/net/wss.js              a small RFC 6455 server, no dependencies
+src/broker.js               introduces two browsers to each other, and never sees the game
+src/persist.js              the week on disk, atomically
+
+public/engine/              the rules, and nothing about banks or grudges
+  game.js                   one table: the week, beats, dice windows, offers, views
+  engines/                  one file per kind of beat: vote, choose, roll, whispers,
+                            grab, plan, draft, report, sitdown, story
+  cards.js bots.js dice.js rng.js util.js
+
+public/chapters/            the stories
+  index.js                  every chapter, and the ones still to come
+  sals-ledger/              Chapter 1
+    index.js                the director: the week's plan and what comes next
+    nights/                 every night, beat by beat
+    jobs.js secrets.js calls.js complications.js ending.js common.js
+
+public/net/room.js          tables, seats, tokens, host migration — the same file the server runs
+public/net/local.js         pass-and-play and solo, in the page
+public/net/peer.js          browser-hosted tables over WebRTC, for static hosting
+public/ui/                  the screens: door, lobby, the table, every beat, the dossier, Monday
+public/app.js               one page, four ways of playing
+public/style.css            green baize, one hard light, and paper you could pick up
+public/qr.js                a QR encoder, so joining is a scan instead of a spelling test
 ```
 
-## What it looks like
+## Adding a chapter
 
-The whole thing is a card table under one overhead lamp. The light lives on the
-felt and falls off at the edges, so the middle of the screen is where you look.
-
-Everything the game hands you is a physical sheet of paper — a taped-down dossier
-for the job, a rubber-stamped verdict at the reckoning, a note with the pressure
-on it — sitting slightly crooked on the baize. Who is at the table runs across
-the top as chips. On a wide screen the job sits on the left and what you can do
-about it sits on the right, so deciding does not mean scrolling. Your hand is
-fanned along the bottom edge of the table and stays tucked under it until you
-pull it out.
-
-Two colour tokens carry all of it: `--ink` and friends mean bone on the felt and
-dark ink on paper, so a new element lands readable on either surface without
-anybody remembering which is which.
-
-## A note on playing it
-
-Nobody has ever enjoyed this game less for having talked more. The whisper box is
-the good part. Lie in it.
+A chapter is a folder under `public/chapters/` that exports the same shape as
+`sals-ledger/index.js`: its jobs, how it deals the week, how it picks each night,
+its nights and their beats, and how it ends. The engine runs any of them; register
+it in `public/chapters/index.js` and it appears on the door.
