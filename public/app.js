@@ -6,7 +6,7 @@
 // game work on static hosting with nobody home.
 
 import { esc, money, heatPips } from './ui/util.js';
-import { door, lobby, table, passCard, monday, titleCard } from './ui/screens.js';
+import { door, lobby, table, passCard, monday, titleCard, chatBox } from './ui/screens.js';
 import { seats, handDock, cardModal, dossier } from './ui/panels.js';
 import { CATALOGUE, DEFAULT_CHAPTER } from './chapters/index.js';
 
@@ -205,7 +205,7 @@ function applyState(next) {
   // a new beat forgets every half-made choice from the last one
   const key = `${state.phase}:${state.beat?.key ?? ''}:${state.beat?.stage ?? ''}:${state.local?.stage ?? ''}:${state.local?.seat?.id ?? ''}`;
   if (key !== ui.beatKey) {
-    const keep = { name: ui.pick.name, code: ui.pick.code, localName: ui.pick.localName };
+    const keep = { name: ui.pick.name, code: ui.pick.code, localName: ui.pick.localName, chat: ui.pick.chat };
     const sameBeat = ui.beatKey && ui.beatKey.split(':')[1] === (state.beat?.key ?? '');
     ui.beatKey = key;
     if (!sameBeat) { ui.pick = keep; window.scrollTo({ top: 0, behavior: 'smooth' }); }
@@ -418,6 +418,20 @@ function inviteBlock() {
 }
 
 function render() {
+  // a state change mid-sentence must not take the cursor away from you
+  const typing = document.activeElement?.dataset?.input ?? null;
+  const caret = typing ? [document.activeElement.selectionStart, document.activeElement.selectionEnd] : null;
+  paint();
+  if (typing) {
+    const el = document.querySelector(`[data-input="${CSS.escape(typing)}"]`);
+    if (el && el !== document.activeElement) {
+      el.focus({ preventScroll: true });
+      try { el.setSelectionRange(caret[0], caret[1]); } catch { /* not a text field */ }
+    }
+  }
+}
+
+function paint() {
   renderChrome();
   if (!state) {
     rail.classList.add('hidden');
@@ -445,10 +459,13 @@ function render() {
   if (state.phase === 'playing' && isDevice() && ctx.local?.stage !== 'pass' && ctx.local?.stage !== 'private') {
     body += `<div class="device-bar"><span class="stamp">anybody need a private look?</span><div class="picker">${(ctx.local?.humans ?? []).map((h) => `<button class="chipbtn" data-cmd="peek" data-args='${JSON.stringify({ id: h.id })}'>${esc(h.name)}</button>`).join('')}</div></div>`;
   }
+  if (mode === 'online') body += chatBox(state, ui, { open: state.phase === 'lobby' || ui.chatOpen });
   if (state.phase === 'playing' && state.isHost && !isDevice()) {
     body += `<div class="host-bar"><button class="link-btn" data-act='${JSON.stringify({ t: 'skip' })}' title="Fill in whatever the slow ones haven’t decided, and move on">${mode === 'solo' ? 'Skip ahead' : 'Host: move things along'}</button></div>`;
   }
   app.innerHTML = body;
+  const log = app.querySelector('.chat-log');
+  if (log) log.scrollTop = log.scrollHeight;
 
   const showPrivate = state.you && !ctx.shared && ctx.local?.stage !== 'pass';
   dock.innerHTML = state.phase === 'playing' && showPrivate ? handDock(state, ui) : '';
@@ -456,6 +473,24 @@ function render() {
   if (showPrivate && ui.card) m = cardModal(state, ui);
   else if (showPrivate && ui.dossier) m = dossier(state, ui);
   modal.innerHTML = m;
+  bringIntoView();
+}
+
+/**
+ * When dice land or a beat's outcome arrives, it goes where the eye is — not
+ * under the hand of cards at the bottom of a phone, with a short clock on it.
+ */
+function bringIntoView() {
+  const b = state?.beat;
+  if (!b || state.local?.stage === 'pass') return;
+  const focus = b.window ? `w${b.window.id}` : b.stage === 'fallout' ? `f${b.key}` : null;
+  if (!focus || focus === ui.focus) return;
+  ui.focus = focus;
+  const el = document.querySelector(b.window ? '.felt-dice' : '.fallout');
+  if (!el) return;
+  requestAnimationFrame(() => {
+    try { el.scrollIntoView({ behavior: 'smooth', block: 'center' }); } catch { /* old browsers */ }
+  });
 }
 
 function renderChrome() {
@@ -532,6 +567,14 @@ const COMMANDS = {
   windowDone() { send({ t: 'windowDone' }); },
   letItStand() { send({ t: 'letItStand' }); },
   nextAll() { send({ t: 'nextAll' }); },
+  say() {
+    const text = (ui.pick.chat ?? '').trim();
+    if (!text) return;
+    send({ t: 'chat', text });
+    ui.pick.chat = '';
+    ui.chatOpen = true;
+    render();
+  },
   async copy() {
     try { await navigator.clipboard.writeText(joinUrl(state.code)); toast('Link copied.'); } catch { toast('Copy it from the address bar.'); }
   },
@@ -585,6 +628,10 @@ document.addEventListener('input', (ev) => {
   }
 });
 
+document.addEventListener('toggle', (ev) => {
+  if (ev.target?.classList?.contains('chat')) ui.chatOpen = ev.target.open;
+}, true);
+
 document.addEventListener('change', (ev) => {
   const el = ev.target;
   if (el.dataset.toggle) { ui.pick[el.dataset.toggle] = el.checked; render(); }
@@ -592,6 +639,7 @@ document.addEventListener('change', (ev) => {
 
 document.addEventListener('keydown', (ev) => {
   if (ev.key === 'Escape' && (ui.card || ui.dossier)) { ui.card = null; ui.dossier = false; render(); }
+  if (ev.key === 'Enter' && ev.target.dataset?.input === 'chat') { COMMANDS.say(); return; }
   if (ev.key === 'Enter' && ev.target.dataset?.input === 'name' && !state) {
     const code = codeFromUrl();
     if (code) COMMANDS.join({ code });
@@ -599,6 +647,14 @@ document.addEventListener('keydown', (ev) => {
 });
 
 $('#dossierBtn').addEventListener('click', () => { ui.dossier = true; render(); });
+
+// A way in for tests and for people chasing a bug: `?debug` puts the table on
+// window.__standoff. Nothing in the game reads it.
+try {
+  if (new URL(location.href).searchParams.has('debug')) {
+    window.__standoff = { get local() { return local; }, get state() { return state; }, get ui() { return ui; }, render: () => render() };
+  }
+} catch { /* no URL */ }
 
 // -------------------------------------------------------------- boot --
 

@@ -69,6 +69,14 @@ function settings(state, isHost) {
   </div>`;
 }
 
+function startButton(state, n) {
+  // solo fills the table with ghosts, so one person is enough
+  const solo = state.local?.mode === 'solo';
+  const ready = solo || n >= state.minPlayers;
+  const label = ready ? (solo && n < 4 ? 'Deal the week — ghosts fill the table' : 'Deal the week') : `It takes ${state.minPlayers}`;
+  return `<div class="row">${actBtn(label, { t: 'start' }, { cls: 'btn big', disabled: !ready })}</div>`;
+}
+
 export function lobby(ctx) {
   const { state, invite, device, me } = ctx;
   const isHost = !!state.isHost;
@@ -98,10 +106,20 @@ export function lobby(ctx) {
       </div>
       <div class="tab-side">
         ${settings(state, isHost)}
-        ${isHost ? `<div class="row">${actBtn(n >= state.minPlayers ? 'Deal the week' : `It takes ${state.minPlayers}`, { t: 'start' }, { cls: 'btn big', disabled: n < state.minPlayers })}</div>` : '<p class="waiting">The host deals when everybody’s here.</p>'}
+        ${isHost ? startButton(state, n) : '<p class="waiting">The host deals when everybody’s here.</p>'}
       </div>
     </div>
   </section>`;
+}
+
+/** Table talk, for tables that aren't all in one room. */
+export function chatBox(state, ui, { open = true } = {}) {
+  const lines = (state.chat ?? []).slice(-14);
+  return `<details class="chat"${open ? ' open' : ''}>
+    <summary>Table talk${lines.length ? ` · ${lines.length}` : ''}</summary>
+    <div class="chat-log">${lines.map((l) => `<p class="${l.kind === 'system' ? 'sys' : ''}"><b>${esc(l.name)}</b> ${esc(l.text)}</p>`).join('') || '<p class="faint small">Nothing said yet. Say it out loud if you’re in the same room.</p>'}</div>
+    <div class="row tight"><input type="text" maxlength="200" placeholder="Say something to the table" data-input="chat" value="${esc(ui.pick.chat ?? '')}" />${cmdBtn('Say it', 'say', {}, { cls: 'btn small' })}</div>
+  </details>`;
 }
 
 // -------------------------------------------------------------- table --

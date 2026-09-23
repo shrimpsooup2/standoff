@@ -675,6 +675,17 @@ button.mode-btn:hover:not(:disabled) { transform: translateY(-2px); box-shadow: 
 .clip p { font-size: 14px; margin: 4px 0 0; }
 .clip:nth-child(odd) { transform: rotate(-0.4deg); }
 
+/* ------------------------------------------------------------- table talk -- */
+
+.chat { margin-top: 30px; border: 1px solid rgba(242, 232, 213, 0.18); border-radius: 4px; padding: 10px 12px; background: rgba(0, 0, 0, 0.2); }
+.chat summary { cursor: pointer; font-family: var(--mono); font-size: 11px; letter-spacing: 0.2em; text-transform: uppercase; color: rgba(242, 232, 213, 0.7); }
+.chat-log { max-height: 220px; overflow-y: auto; margin: 10px 0; display: grid; gap: 4px; font-size: 14.5px; }
+.chat-log p { margin: 0; }
+.chat-log b { font-family: var(--mono); font-size: 12px; color: var(--gold); margin-right: 4px; }
+.chat-log .sys { color: rgba(242, 232, 213, 0.55); font-style: italic; }
+.chat-log .sys b { color: rgba(242, 232, 213, 0.55); }
+.chat input { flex: 1; min-width: 160px; font-size: 14px; padding: 9px 12px; }
+
 /* ------------------------------------------------------------- notices -- */
 
 .toasts { position: fixed; top: 64px; left: 50%; transform: translateX(-50%); z-index: 850; display: grid; gap: 8px; width: min(440px, 92vw); }
