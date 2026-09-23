@@ -46,7 +46,9 @@ export default {
   beats: [
     'way-in',
     { if: (c) => wayIn(c) === 'gate', then: 'lenny', else: { if: (c) => wayIn(c) === 'fence', then: 'fence', else: 'water' } },
-    { maybe: 'heist', chance: 0.3 },
+    'log',
+    { maybe: 'heist', chance: 0.2 },
+    'cage',
     'box',
     { oneOf: [
       { beat: 'dogs', weight: 2 },
@@ -117,6 +119,7 @@ export default {
       openings: () => LENNY.openings,
       filler: () => LENNY.filler,
       resolve(c, { success, openingLabel, talker }) {
+        c.memo.inClean = !!success;
         if (success) {
           c.memo.lennyClean = true;
           c.line(`${c.name(talker)} opened with ${openingLabel.replace(/[“”]/g, '')} Lenny laughed, lifted the barrier, and went back to his sandwich.`);
@@ -144,6 +147,7 @@ export default {
       label: 'Over the wire',
       stakes: 'Miss it and somebody gets hung up on the wire: two heat for them, and the Case File grows.',
       resolve(c, r) {
+        c.memo.inClean = r.success;
         if (r.success) { c.line(c.rng.pick(['Everybody over, one torn sleeve between you. The train went by as the last of you dropped.', 'Over and down. Somebody landed in a puddle and has been told not to talk about it.'])); return; }
         const who = c.rng.pick(c.free);
         c.line(`${who.name} got hung up on the wire for four long minutes. A security light came on. By the time they were free, the railway cop had a very good story to tell.`);
@@ -170,9 +174,80 @@ export default {
         c.line('Somebody says the boat costs $5k a head to borrow, and everybody pays, because it’s midnight and nobody wants to argue in a rowboat.');
       },
       resolve(c, r) {
+        c.memo.inClean = r.success;
         if (r.success) { c.line('You came up under Pier 9 in the dark, without a sound, which has never once happened in the history of rowboats.'); return; }
         c.line('The tide won. You came in two piers down, soaking wet, in front of a man fishing, who waved. Everybody is soaked and everybody is seen.');
         for (const p of c.free) c.heat(p.id, 1, 'coming in by water');
+      },
+    },
+
+    log: {
+      engine: 'vote', time: '11:55 P.M.', place: (c) => (c.memo.inClean ? 'The cage office, Pier 9' : 'The corridor to the cage, Pier 9'), title: (c) => (c.memo.inClean ? 'The Log' : 'The Camera'), kicker: 'A VOTE',
+      text: (c) => (c.memo.inClean ? [
+        `You’re in, and nobody knows it. On the desk in the cage office is the evidence log: every item that came out of Sal’s house, the case number, Prout’s initials, and a blank line for whoever signs it out.${c.memo.lennyClean ? ' Lenny’s pen is still on it.' : ''}`,
+        'A log like this is how Prout proves on Monday that the box is the box. What do you do with it?',
+      ] : [
+        'You’re in, but not quietly, and there is a camera over the cage with a little red light on, pointed at the corridor you just came down. Somewhere in Lenny’s hut, a tape is turning.',
+        'What do you do about the camera?',
+      ]),
+      options: (c) => (c.memo.inClean ? [
+        { id: 'tear', label: 'Tear Sal’s pages out of the log', blurb: 'No log, no chain of custody. Somebody will notice in the morning, and somebody will get looked at.', risk: 0.4, reward: 0.5 },
+        { id: 'prout', label: 'Sign it all out in Prout’s name', blurb: 'If it holds up, half the box gets thrown out on Monday. If a handwriting man looks at it, it’s worse than nothing.', risk: 0.6, reward: 0.7 },
+        { id: 'castellano', label: 'Sign it out as a Castellano', blurb: '“V. Castellano,” in capitals. Prout will go across the river. So will the Castellanos’ temper.', risk: 0.5, reward: 0.5 },
+        { id: 'leave', label: 'Leave it', blurb: 'Nobody touches the log. Nobody has to explain the log.', risk: 0, reward: 0.1 },
+      ] : [
+        { id: 'paint', label: 'Spray-paint it', blurb: 'Somebody has to get close enough. Maybe it already has your face.', risk: 0.5, reward: 0.4 },
+        { id: 'tape', label: 'Go and get the tape from Lenny’s hut', blurb: 'The whole tape, gone. It takes time you’ll miss at the cage.', risk: 0.4, reward: 0.5 },
+        { id: 'ignore', label: 'Pull your collars up and ignore it', blurb: 'It’s 1994 equipment. Probably.', risk: 0.7, reward: 0.1 },
+      ]),
+      resolve(c, { choice }) {
+        const blame = () => c.rng.pick(c.free);
+        switch (choice) {
+          case 'tear': {
+            c.caseFile(-1, 'the Pier 9 log is missing its pages');
+            const who = blame();
+            c.heat(who.id, 1, 'the missing log pages');
+            c.line(`Four pages come out of the log and go into ${who.name}’s coat. When Lenny finds the stubs in the morning, it’s ${who.name} he’ll describe.`);
+            break;
+          }
+          case 'prout':
+            if (c.rng.chance(0.5)) { c.caseFile(-2, 'half of Sal’s box, signed out by “W. Prout”'); c.line('“W. Prout,” in a very good copy of his handwriting, on every line. On Monday, Morty is going to have a wonderful morning.'); }
+            else { c.caseFile(1, 'a forged signature a handwriting man took four minutes over'); c.line('“W. Prout,” on every line. On Monday a handwriting man is going to take four minutes over it, and Morty is going to have a terrible morning.'); }
+            break;
+          case 'castellano':
+            c.caseFile(-1, 'a log that points across the river');
+            c.set('war', true);
+            c.line('“V. CASTELLANO,” in capitals, on every line. Prout will spend Tuesday across the river. The Castellanos will spend it wondering who did this, and they will not wonder for long.');
+            break;
+          case 'paint':
+            if (c.rng.chance(0.6)) c.line('A long hiss, and the red light is a black smear. Nobody can say what it saw before.');
+            else { c.caseFile(1, 'one clear frame from the Pier 9 camera'); c.line('The paint went on the lens. So did a very clear frame of whoever was holding the can.'); }
+            break;
+          case 'tape':
+            c.memo.cageRushed = true;
+            c.line('Somebody goes back for the tape, finds it, and comes back with it in their shirt. It takes eleven minutes. Everybody feels every one of them.');
+            break;
+          default:
+            if (choice === 'ignore') { c.caseFile(1, 'the Pier 9 camera'); c.line('Collars up. The red light watches everybody go by. It was not 1994 equipment.'); }
+            else c.line('Nobody touches the log.');
+        }
+      },
+    },
+
+    cage: {
+      engine: 'roll', time: '12:05 A.M.', place: 'The evidence cage, Pier 9', title: 'The Padlock', kicker: 'THE DICE',
+      text: (c) => [
+        `The cage is chain-link floor to ceiling with a padlock the size of a fist. ${c.memo.cageRushed ? 'After eleven minutes on the tape, nobody has the patience for it.' : 'Somebody has bolt cutters. Somebody always has bolt cutters.'}`,
+        'Get it open all the way and the whole box is yours to pick through. Don’t, and you’re reaching through a gap for whatever’s near the front.',
+      ],
+      target: (c) => (c.memo.inClean ? 7 : 8) + (c.memo.cageRushed ? 1 : 0),
+      label: 'The padlock',
+      stakes: 'Miss it and you only reach what’s at the front, and the noise follows you out.',
+      resolve(c, r) {
+        c.memo.cageOpen = r.success;
+        if (r.success) { c.line('The padlock goes with a crack like a pistol. The cage door swings open. The box is right there.'); return; }
+        c.memo.cageNoise = true;
+        c.line('The bolt cutters slip, twice, loudly. The lock holds. The door gives four inches, and four inches is what you get.');
       },
     },
 
@@ -193,7 +268,9 @@ export default {
         const pool = ITEMS.filter((it) => !(it.card === 'the-photo' && c.flag('photoGiven')) && !(it.card === 'seed-tin' && (c.flag('seedTinGiven') || c.flag('seedTin'))));
         const must = pool.filter((it) => it.id === 'shoebox' || it.id === 'page');
         const rest = c.rng.shuffle(pool.filter((it) => !must.includes(it)));
-        const pick = [...must, ...rest].slice(0, n + 1);
+        // a cage that wouldn't open all the way only gives up what's near the front
+        const reach = c.memo.cageOpen === false ? Math.max(2, n - 1) : n + 1;
+        const pick = [...must, ...rest].slice(0, reach);
         const names = c.rng.shuffle(c.players.map((p) => p.id));
         let k = 0;
         return c.rng.shuffle(pick).map((it) => {
@@ -253,7 +330,7 @@ export default {
         'Nobody said anything about dogs. There are two dogs. They are called, according to the sign, BRUNO and ALSO BRUNO.',
         'The yard lights come on. Somewhere behind the containers, something large wakes up and starts to run.',
       ]), 'Everybody out, with everything, before they get here.'],
-      target: () => 7,
+      target: (c) => 7 + (c.memo.cageNoise ? 1 : 0),
       label: 'Out before the dogs',
       stakes: 'Miss it and somebody drops what they took from the box.',
       resolve(c, r) {
@@ -294,7 +371,7 @@ export default {
     'lenny-wakes': {
       engine: 'roll', time: '12:30 A.M.', place: 'The front gate, Pier 9', title: 'Lenny Wakes Up', kicker: 'GET OUT',
       text: () => ['Lenny has woken up, found his notebook, and is standing in the middle of the road with a flashlight and a radio. He’s calling it in. He’s spelling out a description.'],
-      target: () => 7,
+      target: (c) => 7 + (c.memo.cageNoise ? 1 : 0),
       label: 'Past Lenny',
       stakes: 'Miss it and the description is a good one: everybody takes one heat.',
       resolve(c, r) {

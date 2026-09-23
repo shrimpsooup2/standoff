@@ -59,15 +59,28 @@ Prout's classmate stopped by Prout on his evening run. Then the job:
 > a private reason to want one of them. A tie goes to a die that shows which faces
 > mean which bank before it lands.
 >
+> **11:20 p.m. — Who Stands Where.** The Driver's in the car and the Talker's at the
+> door. Everybody else picks a spot: inside with the money, or out on the corner,
+> at the payphone, across the street — safer for everybody, and nothing in your
+> pockets.
+>
 > **11:40 p.m. — The Door.** One of you talks to whoever's on the door. Everybody
 > else holds one fact about them, and passes it on — as written, turned around, or
 > not at all.
+>
+> **11:46 p.m. — Inside.** Whoever's behind the door — a manager with a cake coming
+> on Friday, a Castellano nephew with a key he shouldn't have, an old guard with a
+> thermos and a radio — and what you do about him. Get the door right and he's
+> helping; get it wrong and his hand is on the button.
 >
 > **11:52 p.m. — The Vault.** Grab or go, round after round, while the alarm gets
 > twitchier. The Driver decides when the car leaves.
 >
 > **12:04 a.m. — The Car.** Two dice on the felt, and a moment for anybody holding
 > something that bends them.
+>
+> **12:20 a.m. — The Cut.** Everybody who came out with money decides, privately,
+> how much of it the people who stood outside ever see.
 >
 > **12:40 a.m. — Counting It Out.** How much of what you took goes in the Bag.
 >

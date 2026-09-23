@@ -18,6 +18,8 @@ export default {
 
   pending(g, b) {
     if (b.stage !== 'pick') return [];
+    // an empty box waits for nobody
+    if (!b.data.items.some((it) => !it.taken)) return [];
     const id = b.data.order[b.data.turn];
     const p = id ? g.getPlayer(id) : null;
     if (!p || g.isAway(p)) return [];

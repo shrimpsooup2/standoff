@@ -32,7 +32,11 @@ export default {
     { if: (c) => target(c) === 'office', then: 'marjorie' },
     { if: (c) => target(c) === 'precinct', then: 'evidence-room' },
     { if: (c) => target(c) === 'clerk', then: 'clerks-office' },
+    { if: (c) => target(c) === 'office', then: 'dictaphone' },
+    { if: (c) => target(c) === 'precinct', then: 'seized' },
+    { if: (c) => target(c) === 'clerk', then: 'jury' },
     'files',
+    'copies',
     { oneOf: [{ beat: 'fire-alarm', weight: 2 }, { beat: 'prout-late', weight: 1 }] },
     'count',
   ],
@@ -118,6 +122,125 @@ export default {
       },
     },
 
+    dictaphone: {
+      engine: 'vote', time: '1:50 A.M.', place: 'Prout’s office', title: 'The Dictaphone', kicker: 'A VOTE',
+      text: (c) => [
+        `Prout’s office is exactly as neat as you’d think: eleven marathon medals, a photograph of a dog that isn’t his, and on the desk a dictaphone with a tape in it, labelled “MON — OPENING — BENEDETTO.” ${c.memo.inClean ? 'Marjorie won’t be back for twenty minutes.' : 'Marjorie is already on the phone to somebody.'}`,
+        'Prout talks to that machine every night about Monday. What do you do with it?',
+      ],
+      options: (c) => [
+        { id: 'listen', label: 'Play it back', blurb: 'Hear what Prout thinks he has. It takes time you’ll miss at the files.', risk: 0.3, reward: 0.7 },
+        { id: 'erase', label: 'Erase it', blurb: 'His opening, gone. He’ll know somebody was here, and he’ll know which somebody talked to Marjorie.', risk: 0.5, reward: 0.5 },
+        { id: 'leave', label: 'Leave it', blurb: 'Don’t touch anything that isn’t a file.', risk: 0, reward: 0.1 },
+      ],
+      resolve(c, { choice }) {
+        const talker = c.freeByJob('talker');
+        if (choice === 'listen') {
+          c.memo.slow = true;
+          const deals = c.players.filter((p) => p.deal).length;
+          const rat = c.players.find((p) => p.secret?.id === 'rat' && !c.isAway(p.id));
+          const job = rat?.job ? c.g.chapter.jobs[rat.job]?.name : null;
+          const heard = [`Prout’s voice, tinny: “…the People will show that the defendant’s own associates…” ${deals ? `He mentions ${deals === 1 ? 'one witness' : `${deals} witnesses`} “from inside the defendant’s circle.”` : 'He doesn’t mention a single witness by name. He sounds worried about that.'}`];
+          if (job && c.rng.chance(0.6)) heard.push(`Then, off the record, muttering: “Remember to thank my friend — ${job.toLowerCase()} — personally.”`);
+          c.line(heard.join(' '));
+          return;
+        }
+        if (choice === 'erase') {
+          c.caseFile(-1, 'Prout’s opening statement, erased');
+          if (talker) c.heat(talker.id, 1, 'Prout knows who talked to Marjorie');
+          c.line(`Forty minutes of Prout erased with the push of a button. On Monday morning he’ll be working from memory, and he’ll know exactly who ${talker ? `${talker.name} was` : 'was here'}.`);
+          return;
+        }
+        c.line('Nobody touches the dictaphone.');
+      },
+    },
+
+    seized: {
+      engine: 'vote', time: '2:10 A.M.', place: 'The evidence cage, 9th Precinct', title: 'The Evidence Bags', kicker: 'A VOTE',
+      text: (c) => [
+        `Next to the files, on a metal shelf: clear plastic evidence bags of cash, each with a name and a date. ${c.players.some((p) => (p.stats?.seized ?? 0) > 0) ? `Some of the names are yours: ${c.list(c.players.filter((p) => (p.stats?.seized ?? 0) > 0).map((p) => p.name))}.` : 'None of the names are yours. All of the money is somebody’s.'}`,
+        'Money that goes missing from an evidence cage gets noticed. What do you do?',
+      ],
+      options: () => [
+        { id: 'ours', label: 'Take back what’s ours', blurb: 'Everything seized from anybody at this table this week. Prout will notice the shelf.', risk: 0.5, reward: 0.6 },
+        { id: 'all', label: 'Take all of it', blurb: 'Everybody’s, not just ours. The shelf will be empty, and very noticeable.', risk: 0.8, reward: 0.8 },
+        { id: 'files', label: 'Leave the money, stick to the files', blurb: 'You came for paper.', risk: 0, reward: 0.1 },
+      ],
+      resolve(c, { choice }) {
+        if (choice === 'files') { c.line('The money stays on the shelf. Everybody looks at it on the way past.'); return; }
+        let back = 0;
+        for (const p of c.free) {
+          const n = Math.min(p.stats?.seized ?? 0, 30000);
+          if (n) { back += c.give(p.id, n, 'the evidence shelf'); p.stats.seized -= n; }
+        }
+        if (choice === 'all') {
+          const extra = round5k(c.scale(40000));
+          const each = round5k(extra / Math.max(1, c.free.length));
+          for (const p of c.free) back += c.give(p.id, each, 'the evidence shelf');
+          c.caseFile(2, 'an empty shelf in the evidence cage');
+          c.line(`The whole shelf goes into a laundry bag: ${money(back)} between you. The desk sergeant is going to have a very bad morning, and so is whoever Prout blames for it.`);
+          return;
+        }
+        c.caseFile(1, 'evidence bags missing from the 9th Precinct');
+        c.line(back ? `Every bag with one of your names on it: ${money(back)}, back where it belongs. The gaps on the shelf are shaped exactly like you.` : 'There’s nothing on the shelf with your names on it. You take nothing, and still leave a gap somebody will notice.');
+      },
+    },
+
+    jury: {
+      engine: 'vote', time: '1:40 A.M.', place: 'The court clerk’s office', title: 'The Jury List', kicker: 'A VOTE',
+      text: (c) => [
+        `In the clerk’s in-tray, clipped to Monday’s docket: the jury list for courtroom 4B. Twelve names, twelve addresses, and in the margin, in the clerk’s pencil, little notes. Juror four: “retired longshoreman.” Juror nine: “knew a Benedetto once, says it won’t matter.”`,
+        'This is the kind of paper people go to prison for looking at. What do you do?',
+      ],
+      options: () => [
+        { id: 'copy', label: 'Copy it for Morty', blurb: 'Morty with a jury list is a different Morty. If anybody ever finds out, it’s the end of the case — the wrong end.', risk: 0.8, reward: 0.8 },
+        { id: 'nine', label: 'Just remember juror nine', blurb: 'One name, one address, in your head. Morty can decide what it’s worth.', risk: 0.4, reward: 0.4 },
+        { id: 'leave', label: 'Put it back in the tray', blurb: 'You never saw it. Nobody can say you did.', risk: 0, reward: 0.1 },
+      ],
+      resolve(c, { choice }) {
+        if (choice === 'leave') { c.line('The jury list goes back in the tray, clip and all. Nobody ever saw it.'); return; }
+        if (choice === 'copy') {
+          if (c.rng.chance(0.5)) { c.set('juryEdge', -2); c.line('The clerk’s copier is warm by the time you’re done. Morty will get twelve names in an envelope with no return address, and on Monday he’ll pick a jury like a man who’s read the answers.'); }
+          else { c.set('juryEdge', 1); c.caseFile(1, 'a copier log that shows a jury list copied at 1:42 a.m.'); c.line('The copier keeps a log. Somebody reads it on Monday morning before the judge does. It is very, very bad for Sal.'); }
+          return;
+        }
+        if (c.rng.chance(0.5)) {
+          c.line('Juror nine: Theresa Colucci, Pleasant Avenue. On Monday the judge dismisses her for knowing the defendant’s mother from church. It was a good name. It was the wrong name.');
+          return;
+        }
+        c.set('juryEdge', -1);
+        c.line('Juror nine: Theresa Colucci, Pleasant Avenue. Somebody writes it on the inside of their wrist in biro. Morty will know what to do with it. Probably.');
+      },
+    },
+
+    copies: {
+      engine: 'vote', time: '2:30 A.M.', place: (c) => ({ office: 'Marjorie’s desk', precinct: 'The property clerk’s window', clerk: 'The clerk’s copier' }[target(c)]), title: 'The Copies', kicker: 'A VOTE',
+      when: (c) => (c.memo.burned ?? 0) > 0,
+      text: (c) => [
+        `On the way out, somebody sees the tray: photocopies of everything you just burned, made on Friday, “in case,” in ${target(c) === 'office' ? 'Marjorie’s' : 'somebody’s'} neat hand on a Post-it. ${c.memo.inClean ? 'There’s time to do something about it.' : 'There isn’t much time to do anything about it.'}`,
+        'What do you do with the copies?',
+      ],
+      options: (c) => [
+        { id: 'burn', label: 'Burn them too', blurb: 'Somebody stays behind to do it properly. They’ll be the last one out.', risk: c.memo.inClean ? 0.3 : 0.6, reward: 0.6 },
+        { id: 'take', label: 'Take them', blurb: 'Copies of Prout’s case are worth something to somebody. Somebody carries them, and owns them.', risk: 0.4, reward: 0.5 },
+        { id: 'leave', label: 'Leave them', blurb: 'Whatever you burned tonight, Prout gets some of it back.', risk: 0.2, reward: 0 },
+      ],
+      resolve(c, { choice }) {
+        const who = c.rng.pick(c.free);
+        if (choice === 'burn') {
+          c.caseFile(-1, 'the photocopies, burned in the same wastepaper basket');
+          if (!c.memo.inClean || c.rng.chance(0.3)) c.heat(who.id, 1, 'last one out');
+          c.line(`${who.name} stays behind with the copies and a lighter and is the last one out, smelling of smoke.`);
+        } else if (choice === 'take') {
+          c.card(who.id, 'dirt');
+          c.line(`${who.name} folds the copies into their coat. Copies of Prout’s case, in the wrong hands. Everybody saw whose hands.`);
+        } else {
+          c.caseFile(1, 'photocopies made on Friday, “in case”');
+          c.line('The copies stay in the tray. On Monday, some of what you burned tonight will turn up anyway, slightly grey.');
+        }
+      },
+    },
+
     files: {
       engine: 'draft', time: '2:20 A.M.', place: (c) => ({ office: 'Prout’s office', precinct: 'The evidence cage', clerk: 'The exhibits trolley' }[target(c)]), title: 'The Files', kicker: 'TAKE ONE, PASS THE BOX',
       text: (c) => [
@@ -140,7 +263,8 @@ export default {
         const must = pool.filter((it) => it.kind === 'burn' || it.kind === 'gary');
         const rest = c.rng.shuffle(pool.filter((it) => !must.includes(it)));
         out.push(...must, ...rest);
-        return c.rng.shuffle(out.slice(0, n + 1));
+        // time spent on the tape is time not spent on the files
+        return c.rng.shuffle(out.slice(0, c.memo.slow ? Math.max(2, n) : n + 1));
       },
       bot(c, p, open) {
         const own = open.find((it) => it.kind === 'person' && it.about === p.id);

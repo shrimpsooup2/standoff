@@ -3,6 +3,7 @@
 // everybody who wants it back.
 
 import { counting, money, round5k, share, nightDay, nightKicker } from '../common.js';
+import { crew, onPost } from '../heist.js';
 
 const CARS = [
   { id: 'buick', label: 'The blue Buick LeSabre',
@@ -38,11 +39,15 @@ function chaseBeat(id) {
     engine: 'roll', time: '11:25 P.M.', place: ch.place, title: ch.title, kicker: 'THE CHASE',
     enter(c) { c.memo.chased = [...(c.memo.chased ?? []), id]; },
     text: (c) => [ch.text, `${c.freeByJob('driver')?.name ?? 'Whoever’s driving'} has both hands on the wheel and ${money(c.memo.take ?? 0)} on the back seat.`],
-    target: (c) => ch.target + (c.memo.wrongCar ? 1 : 0),
+    // a decoy pulls one Lincoln away on the first chase; somebody at the diner sees the rest coming
+    target: (c) => ch.target + (c.memo.wrongCar ? 1 : 0) + (c.memo.chaseMod ?? 0)
+      - ((c.memo.chased?.length ?? 0) <= 1 && onPost(c, 'decoy').length ? 1 : 0)
+      - ((c.memo.chased?.length ?? 0) <= 1 && onPost(c, 'diner').length ? 1 : 0),
     roller: (c) => c.freeByJob('driver')?.id ?? null,
     label: (c) => `${c.freeByJob('driver')?.name ?? 'Whoever’s driving'} floors it.`,
     stakes: 'Miss it and a bag goes out the window, and the driver takes the heat for it.',
     resolve(c, r) {
+      c.memo.chaseOk = [...(c.memo.chaseOk ?? []), r.success];
       if (r.success) {
         c.line(c.rng.pick({
           bridge: ['Over the gap with a bang that took the exhaust off. The Lincolns stopped. The barge honked.'],
@@ -55,9 +60,9 @@ function chaseBeat(id) {
       const lost = round5k((c.memo.take ?? 0) * 0.3);
       c.memo.take = Math.max(0, (c.memo.take ?? 0) - lost);
       c.memo.lost = true;
-      c.line(`A bag went out the back window: ${money(lost)} across the road behind you. The Lincolns stopped to pick it up.`);
-      const d = c.freeByJob('driver');
-      if (d) c.heat(d.id, 1, 'the chase');
+      c.line(`A bag went out the back window: ${money(lost)} across the road behind you. The Lincolns stopped to pick it up, and got a good look at who was in the car.`);
+      const riders = onPost(c, 'inside').concat(onPost(c, 'car'));
+      for (const p of riders.length ? riders : [c.freeByJob('driver')].filter(Boolean)) c.heat(p.id, 1, 'the chase');
     },
   };
 }
@@ -65,9 +70,11 @@ function chaseBeat(id) {
 export default {
   id: 'drop', title: 'The Drop', day: nightDay, kicker: nightKicker,
   beats: [
+    'lot',
     'which-car',
     { oneOf: Object.keys(CHASES).map((id) => ({ beat: `chase-${id}` })) },
-    { oneOf: Object.keys(CHASES).map((id) => ({ beat: `chase-${id}`, when: (c) => !c.memo.chased?.includes(id) })) },
+    'lincolns',
+    { if: (c) => !c.memo.ditched, then: { oneOf: Object.keys(CHASES).map((id) => ({ beat: `chase-${id}`, when: (c) => !c.memo.chased?.includes(id) })) } },
     'the-count',
     'count',
   ],
@@ -78,6 +85,57 @@ export default {
     );
   },
   defs: {
+    lot: crew({
+      time: '10:40 P.M.', place: 'Route 9, across from the Shop-Rite',
+      text: (c) => [
+        `The Shop-Rite lot at twenty to eleven, from across Route 9. ${c.rng.pick(['The Castellanos’ bagman is due at half past.', 'Somebody’s already parked a black Lincoln at the far end with the engine running.'])} Whoever is in the car with the money when it leaves is in the chase, with everything that goes with a chase.`,
+        'Pick where you are tonight. It all gets split evenly at the end, whatever you did — so somebody has to be brave, and everybody else has to trust them.',
+      ],
+      talkerInside: true,
+      posts: () => [
+        { id: 'inside', label: 'In the car with the money', blurb: 'In the chase. If a bag goes out of the window, you’re the one who was seen.', where: 'in the car with the money' },
+        { id: 'decoy', label: 'Driving the decoy', blurb: 'A second car, same colour, going the other way. One of the Lincolns follows you instead. The first chase is one easier.', max: 1, where: 'driving the decoy' },
+        { id: 'diner', label: 'In the diner across the road', blurb: 'Coffee, a window, and a pay phone to the car. You see who comes after them. The first chase is one easier.', max: 1, where: 'watching from the diner' },
+      ],
+    }),
+
+    lincolns: {
+      engine: 'vote', time: '11:32 P.M.', place: 'Somewhere between Route 9 and home', title: 'The Lincolns', kicker: 'A VOTE',
+      text: (c) => (c.memo.chaseOk?.[0] ? [
+        'You came out of it clean, but the Lincolns are still out there: two sets of headlights, three blocks back, turning every time you turn.',
+        'What now?',
+      ] : [
+        'The Lincolns are right on your bumper. One of them has its window down, and somebody in it is shouting a name you don’t want to hear shouted.',
+        'What now?',
+      ]),
+      options: (c) => [
+        { id: 'floor', label: 'Floor it', blurb: 'Keep going and outrun them. Another chase.', risk: 0.5, reward: 0.5 },
+        { id: 'garage', label: 'Ditch the car in Nonna’s cousin’s garage', blurb: 'Lights off, door down, wait it out. No more chasing — if they don’t find the garage.', risk: c.memo.chaseOk?.[0] ? 0.3 : 0.6, reward: 0.5 },
+        { id: 'bag', label: 'Throw them a bag', blurb: 'A quarter of the money out of the window. They’ll stop for it. The next chase is two easier.', risk: 0.2, reward: 0.2 },
+      ],
+      resolve(c, { choice }) {
+        const riders = onPost(c, 'inside');
+        if (choice === 'garage') {
+          c.memo.ditched = true;
+          const found = c.rng.chance(c.memo.chaseOk?.[0] ? 0.25 : 0.5);
+          if (!found) { c.line('Lights off, door down. The Lincolns go past twice, slowly, and then they don’t come back. Nobody talks for an hour.'); return; }
+          const lost = round5k((c.memo.take ?? 0) * 0.3);
+          c.memo.take = Math.max(0, (c.memo.take ?? 0) - lost);
+          for (const p of riders) c.heat(p.id, 1, 'found in a garage');
+          c.line(`The Lincolns find the garage. There is shouting and a crowbar and ${money(lost)} of it goes back across the river. Everybody in the car was seen.`);
+          return;
+        }
+        if (choice === 'bag') {
+          const lost = round5k((c.memo.take ?? 0) * 0.25);
+          c.memo.take = Math.max(0, (c.memo.take ?? 0) - lost);
+          c.memo.chaseMod = -2;
+          c.line(`${money(lost)} goes out of the window in a gym bag. Both Lincolns stop for it, which says a lot about the Castellanos.`);
+          return;
+        }
+        c.line('Everybody holds on to something.');
+      },
+    },
+
     'which-car': {
       engine: 'whispers', time: '11:05 P.M.', place: 'The Shop-Rite parking lot, Route 9', title: 'Which Car', kicker: 'ONE OF YOU CHOOSES',
       whoLabel: 'Which car is the drop in?',

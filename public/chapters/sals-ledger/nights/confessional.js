@@ -28,10 +28,13 @@ const FILLER = [
 export default {
   id: 'confessional', title: 'The Confessional', day: nightDay, kicker: nightKicker,
   beats: [
+    'esposito',
     'father',
     'tapes',
-    { maybe: 'street', chance: 0.25 },
+    'second-box',
+    { maybe: 'street', chance: 0.2 },
     'plate',
+    'strega',
     'count',
   ],
   close(c) {
@@ -43,6 +46,76 @@ export default {
     );
   },
   defs: {
+    esposito: {
+      engine: 'vote', time: '10:20 P.M.', place: 'The side door of St. Anthony’s', title: 'Mrs. Esposito', kicker: 'A VOTE',
+      text: () => [
+        'The side door of St. Anthony’s is open, and inside, doing the flowers for Sunday at twenty past ten at night, is Mrs. Esposito — who told Nonna about the tapes, and who tells everybody everything, and who has never once in her life been asked to leave a church.',
+        'What do you do about Mrs. Esposito?',
+      ],
+      options: () => [
+        { id: 'help', label: 'Help her with the flowers', blurb: 'All of you, for an hour. She’ll tell everybody you were at church, which is, technically, an alibi.', risk: 0.2, reward: 0.4 },
+        { id: 'wait', label: 'Wait in the car until she goes', blurb: 'She does the flowers slowly. Father Dominic might go to bed.', risk: 0.4, reward: 0.3 },
+        { id: 'past', label: 'Walk straight past her', blurb: 'Nod, genuflect, keep going. She will have a lot to say about it by morning.', risk: 0.6, reward: 0.3 },
+      ],
+      resolve(c, { choice }) {
+        if (choice === 'help') {
+          for (const p of c.free) if (p.heat > 0 && c.rng.chance(0.3)) p.heat -= 1;
+          c.line('An hour of gladioli. Mrs. Esposito tells everybody on the phone tree that you were all at church on a Thursday night, and some of the neighbourhood believes it.');
+        } else if (choice === 'wait') {
+          if (c.rng.chance(0.5)) c.line('She leaves at eleven. Father Dominic is still up, in the box, listening to the Mets.');
+          else { c.memo.dominicTired = true; c.line('She leaves at a quarter to twelve. Father Dominic is still in the box, but he is very tired and very short with everybody.'); }
+        } else {
+          const who = c.rng.pick(c.free);
+          if (who) c.heat(who.id, 1, 'Mrs. Esposito’s phone tree');
+          c.line(`Everybody walks past Mrs. Esposito. By breakfast half the parish knows that ${who?.name ?? 'somebody'} was in St. Anthony’s at half ten on a Thursday, in a hurry.`);
+        }
+      },
+    },
+
+    'second-box': {
+      engine: 'vote', time: '11:50 P.M.', place: 'The sacristy', title: 'The Second Box', kicker: 'A VOTE',
+      text: () => [
+        'Under the first shoebox, a second one, older, with a rubber band round it and one word on the lid in Dominic’s neat hand: CASTELLANO. Thirty years of the other side of the river, telling Father Dominic everything.',
+        'What do you do with it?',
+      ],
+      options: () => [
+        { id: 'nonna', label: 'Take it to Nonna', blurb: 'She’ll know what to do with it. It might end a war. It might start a worse one.', risk: 0.3, reward: 0.5 },
+        { id: 'sell', label: 'Sell it to Prout', blurb: '$10k each from Prout’s man. Prout goes after the Castellanos for a while, and the Castellanos will find out who sold them.', risk: 0.6, reward: 0.6 },
+        { id: 'leave', label: 'Put it back', blurb: 'Some things belong to God. And to the Castellanos.', risk: 0, reward: 0.1 },
+      ],
+      resolve(c, { choice }) {
+        if (choice === 'nonna') {
+          c.set('castellanoTapes', true);
+          if (c.flag('war')) { c.set('war', false); c.set('truce', 'tapes'); c.line('Nonna listens to one tape, with her eyes closed, and makes one phone call across the river. The war is over by morning. Nobody asks what was on the tape.'); }
+          else c.line('Nonna puts the box on top of the wardrobe without opening it. “Insurance,” she says.');
+        } else if (choice === 'sell') {
+          for (const p of c.free) c.give(p.id, 10000, 'Prout’s man');
+          c.set('war', true);
+          c.caseFile(-1, 'Prout spent a week on the Castellanos instead');
+          c.line(`${money(10000 * c.free.length)} from Prout’s man at the curb. Prout will spend the next week across the river. The Castellanos will spend it finding out who.`);
+        } else c.line('The CASTELLANO box goes back under the first one, rubber band and all.');
+      },
+    },
+
+    strega: {
+      engine: 'vote', time: '12:30 A.M.', place: 'The sacristy, a bottle of Strega', title: 'The Priest’s Confession', kicker: 'PICK ONE OF YOU',
+      text: (c) => [
+        `Father Dominic takes the bottle of Strega from behind the ninth station, pours ${c.free.length} small glasses, and sits down heavily. “Forty-one years I have listened,” he says. “Tonight one of you listens to me.”`,
+        'Pick who stays behind to hear Father Dominic’s confession. Whatever he says, only they will know.',
+      ],
+      candidates: (c) => c.free.map((p) => p.id),
+      noSelf: false,
+      resolve(c, { choice }) {
+        const others = c.others(choice).filter((q) => q.secret);
+        const t = others.length ? c.rng.pick(others) : null;
+        c.line(`${c.name(choice)} stays. Everybody else waits on the church steps for forty minutes and doesn’t ask.`);
+        if (!t) { c.note(choice, 'Father Dominic confesses that he has never once believed a word anybody told him in that box. Then he falls asleep.', 'Father Dominic'); return; }
+        const sv = c.g.chapter.secretView(c, t);
+        c.note(choice, `Father Dominic, on his third glass, confesses that he broke the seal once this week, to himself: ${t.name} told him what they want. “${sv.name}.” He makes you promise to forget it. You don’t.`, 'Father Dominic');
+        c.g.bond(choice, t.id, 'heard');
+      },
+    },
+
     father: {
       engine: 'whispers', time: '10:40 P.M.', place: 'St. Anthony’s, the second confessional on the left', title: 'Father Dominic', kicker: 'ONE OF YOU TALKS',
       whoLabel: 'Father Dominic, forty-one years at St. Anthony’s',

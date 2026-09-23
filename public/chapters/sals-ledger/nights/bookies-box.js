@@ -21,8 +21,11 @@ export default {
   beats: [
     'dressed',
     'fight',
-    { maybe: 'heist', chance: 0.3 },
+    'tommy',
+    { if: (c) => !!c.memo.sitter, then: 'baccarat' },
+    { maybe: 'heist', chance: 0.2 },
     'counting-room',
+    'purser',
     { oneOf: [{ beat: 'overboard', weight: 2 }, { beat: 'tender', weight: 1.5 }] },
     'count',
   ],
@@ -175,6 +178,101 @@ export default {
       },
     },
 
+    tommy: {
+      engine: 'vote', time: '11:30 P.M.', place: 'The baccarat table, main deck', title: 'Big Tommy’s Table', kicker: 'WHO KEEPS HIM BUSY?',
+      text: (c) => [
+        `Big Tommy Russo — who owns the Lady Luck, owes Sal money, and stopped returning Nonna’s calls in March — is at the baccarat table in a ${c.rng.pick(['white dinner jacket', 'tuxedo with a pinky ring on each hand', 'cardigan, somehow, over a tuxedo'])}. At one o’clock every night he goes down to the counting room himself to watch it counted.`,
+        'Somebody has to sit down at his table and keep him there. Whoever it is plays against Big Tommy with their own money, and won’t see the inside of the counting room.',
+      ],
+      candidates: (c) => c.free.filter((p) => p.job !== 'driver' || c.free.length < 3).map((p) => p.id),
+      noSelf: false,
+      resolve(c, { choice }) {
+        c.memo.sitter = choice;
+        c.line(`${c.name(choice)} pulls out a chair at Big Tommy’s table. Tommy looks at the chips, then at ${c.name(choice)}, then smiles with all his teeth.`);
+      },
+    },
+
+    baccarat: {
+      engine: 'roll', time: '12:40 A.M.', place: 'The baccarat table, main deck', title: 'Banco', kicker: 'THE DICE',
+      text: (c) => [
+        `${c.name(c.memo.sitter)} has been at Big Tommy’s table for an hour and ten minutes. Tommy is winning, which he likes, and talking, which he likes more. It’s ten to one. One more hand decides whether he stays for another.`,
+      ],
+      who: (c) => [c.memo.sitter].filter((id) => c.p(id) && !c.isAway(id)),
+      roller: (c) => c.memo.sitter,
+      target: () => 7,
+      label: (c) => `${c.name(c.memo.sitter)} plays the last hand.`,
+      stakes: 'Win it and Tommy stays at the table, and you walk away with his money. Lose it and he gets bored and goes down to count, early.',
+      resolve(c, r) {
+        const id = c.memo.sitter;
+        if (r.success) {
+          const n = c.give(id, c.scale(20000), 'Big Tommy’s table');
+          c.memo.tommyMod = -1;
+          c.line(`${c.name(id)} turns over a natural nine. Big Tommy laughs, pays ${money(n)}, and orders another bottle. He isn’t going anywhere.`);
+          c.fact(id, 'tommy', `Did ${c.name(id)} take money off Big Tommy tonight?`, true);
+        } else {
+          const n = c.charge(id, 10000);
+          c.memo.tommyMod = 1;
+          c.line(`${c.name(id)} loses ${money(n)} on a four. Big Tommy yawns, checks his watch, and says he’ll just go down and see how the count is doing.`);
+        }
+      },
+    },
+
+    purser: {
+      engine: 'vote', time: '1:30 A.M.', place: 'The stairs to the stern', title: 'The Purser', kicker: 'A VOTE',
+      text: (c) => (c.memo.tripped ? [
+        'Fat Sal is shouting somewhere behind you, and coming up the stairs to the stern with a flashlight is the purser, Mr. Anselmo, who has never once in eleven years had to run anywhere.',
+        'Between you and the tender: Mr. Anselmo. What do you do?',
+      ] : [
+        'Asleep across the stairs to the stern, in full uniform, is the purser, Mr. Anselmo, who has been at the bar since nine. On his belt is a ring of keys, and one of them opens the captain’s cabin, where the house keeps its second box.',
+        'Between you and the tender: Mr. Anselmo, and his keys. What do you do?',
+      ]),
+      options: (c) => (c.memo.tripped ? [
+        { id: 'throw', label: 'Throw the money down to the tender first', blurb: 'Then jump after it. If a bag misses the tender, it misses.', risk: 0.4, reward: 0.4 },
+        { id: 'bribe', label: 'Pay Anselmo to look at the sea', blurb: `${money(5000)} each. He makes forty dollars a night. The jump is easier.`, risk: 0.2, reward: 0.4 },
+        { id: 'lifeboat', label: 'Hide in a lifeboat until it goes quiet', blurb: 'The jump will be easy. The boat is getting closer to the dock the whole time.', risk: 0.5, reward: 0.3 },
+      ] : [
+        { id: 'step', label: 'Step over him', blurb: 'Quietly. He’s a heavy sleeper. Probably.', risk: 0.1, reward: 0.2 },
+        { id: 'keys', label: 'Take his keys: the captain’s cabin', blurb: 'The house’s second box. More money. Mr. Anselmo is a heavy sleeper, probably.', risk: 0.6, reward: 0.8 },
+        { id: 'bed', label: 'Put him to bed', blurb: 'Carry him to his cabin, take his shoes off. Somebody on this boat should be kind to him.', risk: 0.2, reward: 0.3 },
+      ]),
+      resolve(c, { choice }) {
+        const inside = c.free.filter((p) => p.id !== c.memo.sitter);
+        if (choice === 'throw') {
+          if (c.rng.chance(0.6)) { c.memo.exitMod = -1; c.line('The bags land in the tender, one after another, thump thump thump. Everybody jumps lighter.'); }
+          else {
+            let lost = 0;
+            for (const p of inside) lost += c.charge(p.id, round5k((c.memo.hauls?.[p.id] ?? 0) * 0.25));
+            c.line(`Most of the bags land in the tender. One doesn’t. ${money(lost)} goes down between the Lady Luck and the tender and does not come up.`);
+          }
+        } else if (choice === 'bribe') {
+          let paid = 0;
+          for (const p of c.free) paid += c.charge(p.id, 5000);
+          c.memo.exitMod = -1;
+          c.line(`${money(paid)} goes into Mr. Anselmo’s jacket. He turns round and looks at the sea very hard, for as long as you need.`);
+        } else if (choice === 'lifeboat') {
+          c.memo.exitMod = -2;
+          if (c.rng.chance(0.4)) { for (const p of c.free) c.heat(p.id, 1, 'seen coming out of a lifeboat'); c.line('It goes quiet after twenty minutes. By then the boat is close enough to the dock that people on it can see people coming out of a lifeboat.'); }
+          else c.line('Twenty minutes under the tarp, knees in each other’s ribs. Then quiet, and the stern, and the tender.');
+        } else if (choice === 'keys') {
+          if (c.rng.chance(0.6)) {
+            const extra = round5k(c.scale(30000));
+            const each = round5k(extra / Math.max(1, inside.length));
+            for (const p of inside) c.give(p.id, each, 'the captain’s cabin');
+            c.memo.take = (c.memo.take ?? 0) + each * inside.length;
+            c.line(`The keys come off his belt without a sound. The captain’s cabin has a strongbox, and the strongbox has ${money(each * inside.length)} in it. Mr. Anselmo sleeps through all of it.`);
+          } else {
+            c.memo.exitMod = 1;
+            c.line('The keys come off his belt with a sound like a church bell. Mr. Anselmo sits up and says “Hey.” Then he says it much louder.');
+          }
+        } else if (choice === 'bed') {
+          c.memo.exitMod = -1;
+          c.line('You carry Mr. Anselmo to his cabin and take his shoes off. He opens one eye, says “The tender’s untied at the back, you’ll want to hurry,” and goes back to sleep.');
+        } else {
+          c.line('Everybody steps over Mr. Anselmo, one by one, in their socks.');
+        }
+      },
+    },
+
     'counting-room': {
       engine: 'grab', time: '1:15 A.M.', place: 'The counting room, lower deck', title: 'Just One More', kicker: 'HOW GREEDY ARE YOU?',
       text(c) {
@@ -190,11 +288,13 @@ export default {
           `Every round, grab or go. The alarm is a man called Fat Sal (no relation) who comes back from his cigarette whenever he feels like it. ${driver ? `${driver.name} is in the tender tied up at the stern, and decides when it leaves.` : 'Nobody is minding the tender.'}`,
         ];
       },
+      who: (c) => c.free.map((p) => p.id).filter((id) => id !== c.memo.sitter),
       vault: (c) => round5k(c.scale(DRESS[dress(c)].vault) * (0.85 + c.rng() * 0.3)),
-      alarm: (c) => DRESS[dress(c)].alarm + (dress(c) === 'wedding' && c.memo.realWedding ? 1 : 0),
+      alarm: (c) => Math.max(0, DRESS[dress(c)].alarm + (dress(c) === 'wedding' && c.memo.realWedding ? 1 : 0) + (c.memo.tommyMod ?? 0)),
       resolve(c, r) {
         const total = Object.values(r.hauls).reduce((a, b) => a + b, 0);
         c.memo.take = total;
+        c.memo.hauls = r.hauls;
         c.memo.tripped = r.tripped;
         if (!total) c.line('Nobody came out of the counting room with anything. Fat Sal finished his cigarette.');
         else c.line(`${money(total)} came out of the counting room in pockets, sleeves and one cummerbund.`);
@@ -207,7 +307,7 @@ export default {
         c.memo.tripped ? 'Fat Sal is back, and he is shouting. Everybody runs for the stern where the tender is tied up.' : 'The boat is turning for home. You have to be off it before it docks and somebody counts the counting room.',
         `${c.freeByJob('driver')?.name ?? 'Somebody'} has the tender’s engine running. It’s a four-foot drop onto a moving boat in the dark.`,
       ],
-      target: (c) => 7 + (c.memo.tripped ? 1 : 0),
+      target: (c) => 7 + (c.memo.tripped ? 1 : 0) + (c.memo.exitMod ?? 0),
       roller: (c) => c.freeByJob('driver')?.id ?? null,
       label: 'The jump',
       stakes: 'Miss it and somebody goes in the water, with whatever’s in their pockets.',

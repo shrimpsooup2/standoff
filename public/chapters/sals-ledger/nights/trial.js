@@ -22,6 +22,8 @@ export function bagShift(c) {
 export function verdictTarget(c) {
   let t = 4 + c.caseFileValue + bagShift(c) + envelopeShift(c);
   if (c.flag('ring') === 'fake-caught') t += 1;
+  // Morty with a copy of the jury list is a different Morty
+  t += c.flag('juryEdge') ?? 0;
   return clamp(t, 3, 12);
 }
 

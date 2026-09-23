@@ -124,22 +124,26 @@ A short game compresses the week to four nights. The full week is seven, at arou
 | Night | Beats |
 |---|---|
 | **Prologue** — *The Arrest* | The premise. Nonna deals out the week: jobs, secrets, cards. |
-| **The Three Banks** | The Napkin (vote) → The Door (whispers) → The Vault (grab) → The Car (roll) → Counting It Out |
-| **The Night Guard** | The Way In (vote) → Lenny, or the Fence, or the Water → Sal's Box (draft) → The Dogs (roll) → Counting It Out |
-| **The Bookie's Box** | Dressed for It (vote) → The Main Event (side bets) → Just One More (grab) → Overboard (roll) → Counting It Out |
+| **The Three Banks** | The Napkin (vote) → Who Stands Where (posts) → The Door (whispers) → the witness who saw you: Pruitt, Nicky or Walt (vote) → The Vault (grab) → The Car (roll) → The Cut (the inside decides what the outside gets) → Counting It Out |
+| **The Night Guard** | The Way In (vote) → Lenny, or the Fence, or the Water → The Log / The Camera (vote) → The Padlock (roll) → Sal's Box (draft) → The Dogs, the Harbor Patrol or Lenny waking up → Counting It Out |
+| **The Bookie's Box** | Dressed for It (vote) → The Main Event (side bets) → Big Tommy's Table (vote) → Banco (roll) → Just One More (grab) → The Purser (vote) → Overboard or the Tender → Counting It Out |
 | **The Castellano Wedding** | The Envelope (hidden gifts) → Table Nine (sit-down) → Vinnie's Offer (private choice) → The Toast (vote, roll) → Counting It Out |
-| **The Retaliation** | The Brick → What Now (vote) → the answer → Who They Take (warn one) → Counting It Out |
+| **The Retaliation** | The Brick → What Now (vote) → *hit them:* posts, the Card Room (grab), Jumbo (vote), the Alley (roll), the Cut · *pay them:* the Sit-Down (whispers), the Cake Box (vote), Eleven Steps (the carrier, alone), One More Thing (vote) · *Nonna:* the Green Pontiac (roll), her Address Book (whispers), the Call (roll), What Nonna Promised (vote) or Waiting Up → Who They Take (warn one) → Counting It Out |
 | **The Room** | Prout sees everybody, one at a time. |
-| **The Motel** | The Desk (whispers: which room) → Gary (vote) → Headlights (who stays behind) → Counting It Out |
-| **The Confessional** | Father Dominic (whispers) → The Tapes (private choice) → The Collection Plate (hidden gifts) → Counting It Out |
-| **Nonna's Ring** | The Window (vote) → Benny's price, or the back room, or Sid the jeweler, or the truth → Nonna → Counting It Out |
-| **The Armored Car** | The Coffee Stop (vote) → Seven Things (hidden effort) → The River (split) → Ferry Street (roll) → Counting It Out |
-| **The Phone Call** | Two A.M. (warn one) → The Pickup → The Apartment (private choice) → Bail (vote) → Counting It Out |
-| **The Drop** | Which Car (whispers) → The Chase (rolls) → The Count (one counter, everyone else trusts them) → Counting It Out |
-| **Somebody Talked** | The Courier → Empty Your Pockets → Nonna Wants a Name (hunt) → Nonna's Justice → Counting It Out |
-| **The Counting House** / **The Cleanup** | The last job: a big score if the Bag is short, making evidence disappear if the Case File is fat. |
+| **The Motel** | The Night Clerk (vote) → The Desk (whispers: which room) → Gary (vote) → Talking Gary Round (roll) → Gary's Suitcase (draft) → Headlights or the Ice Machine → Counting It Out |
+| **The Confessional** | Mrs. Esposito (vote) → Father Dominic (whispers) → The Tapes (private choice) → The Second Box (vote) → The Collection Plate (hidden gifts) → The Priest's Confession (vote) → Counting It Out |
+| **Nonna's Ring** | The Window (vote) → Benny (whispers) → *buy:* Benny's Price (roll), Pass the Hat if the Bag is short · *steal:* the Back Room (hidden effort), Benny in His Pyjamas if it goes wrong · *copy:* Sid · *truth:* Who Tells Her (vote), How You Say It, After (vote) → Empty-Handed if nothing came home → The Walk Home (vote) → Who Gives It to Her (vote) → Does Nonna Notice? → Counting It Out |
+| **The Armored Car** | The Coffee Stop (vote) → Paulie (whispers) → Seven Things (hidden effort) → The Guard on the Right (vote) → The River (split) → Ferry Street (roll) → Counting It Out |
+| **The Phone Call** | Two A.M. (warn one) → The Knock → The Apartment (private choice) → The Steps (private choice) → Bail (vote) → Who Told Them? (vote) → Counting It Out |
+| **The Drop** | Who Stands Where (posts) → Which Car (whispers) → The Chase (roll) → The Lincolns (vote) → another chase, unless you ditched the car → The Count (one counter, everyone else trusts them) → Counting It Out |
+| **Somebody Talked** | The Courier → Page Three (vote: the reporter on the phone) → The Hallway (hide money, plant the paper) → Empty Your Pockets → Nonna Wants a Name (hunt) → *right name:* What Happens to Them (vote), maybe Back to Prout (roll) · *wrong name:* Nonna's Stories (a canary trap) → The Sweep or Ray Knows Who → Counting It Out |
+| **The Counting House** / **The Cleanup** | The last job: a big score if the Bag is short (posts, the way in, Big Tommy's Book, the Counting Room, the Car, the Cut), making evidence disappear if the Case File is fat (the way in, one decision per building, the Files, the Copies, the way out). |
 | **The Night Before** | Dinner at Dolores's (sit-down) → Sal's Last Call → The Room → The Last Count |
 | **The Trial** | Before the Jury (name the rat) → The Verdict → Monday (what happened to everybody) |
+
+Across the river, in the Families game, the Castellanos get their own nights at the same time: **The Collection** (Vinnie's Orders → the One Who Won't Pay → the Rounds → the Patrol Car → Vinnie's Notebook → a Call to Prout), **The Card Room** (the Marker → the Cop at Table Four → the Wallet or the Notebook → the Last Hand → the House Take), **The Pages** (Cousin Benny → Benny's Back Room → the pages, or the detectives → Where the Page Goes → the Payphone) and **The Ferry** (the Customs Man → Seven Crates → Tinned Tomatoes → One Gym Bag or the Tail → the Coast Guard).
+
+Every job is five or six decisions, and each one is made from the job's own scene: who's on the door, who's in the car, what happens when the alarm goes. What happens at one decides what the next one is: a clean door makes the witness easier, a wrong car puts the Lincolns on your bumper, and the name you give Nonna decides whether the rest of the night is a punishment or a trap.
 
 ### How the story remembers
 

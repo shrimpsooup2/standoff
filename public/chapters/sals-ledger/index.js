@@ -144,7 +144,7 @@ function setup(c) {
 /** What Morty wants: about $80k a head (people earn during the day too), less for a short week. */
 function bagTarget(c, n) {
   const week = c.s.config.length === 'short' ? 0.6 : 1;
-  return round5k((80000 * n + 60000) * week);
+  return round5k((90000 * n + 60000) * week);
 }
 
 /** Seven to ten: two sides of the river. */

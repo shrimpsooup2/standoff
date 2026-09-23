@@ -293,3 +293,19 @@ test('on a night apart, each family sees its own story and nobody else’s choic
   }
   assert.ok(checked > 10, 'a night apart was actually looked at');
 });
+
+test('a step inside a branch is decided when the night gets to it, not when the branch opens', () => {
+  const g = new Game({ code: 'TEST', seed: 'lazy-branch' });
+  const def = { id: 'x', beats: ['a', { if: () => true, then: ['b', { if: (c) => c.memo.flag, then: 'c', else: 'd' }] }] };
+  g.chapter = Object.assign(Object.create(Object.getPrototypeOf(g.chapter) ?? null), g.chapter, { night: () => def });
+  g.s.scene = { nightId: 'x', cursor: 0, queue: [], done: [] };
+  g.s.night = { memo: {} };
+  assert.equal(g.resolveNext(), 'x/a');
+  assert.equal(g.resolveNext(), 'x/b');
+  // whatever b did happens here, before the next step is worked out
+  g.s.night.memo.flag = true;
+  // the rest of the branch waits in the saved state as plain JSON
+  assert.deepEqual(JSON.parse(JSON.stringify(g.s.scene.queue)), g.s.scene.queue);
+  assert.equal(g.resolveNext(), 'x/c');
+  assert.equal(g.resolveNext(), null);
+});

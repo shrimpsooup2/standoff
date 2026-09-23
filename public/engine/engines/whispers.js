@@ -121,7 +121,12 @@ export default {
     });
     const spare = clues.slice(listening.length);
     const tp = g.getPlayer(talker);
-    const talkerClue = tp?.job === 'talker' && spare.length ? spare[0] : null;
+    let talkerClue = tp?.job === 'talker' && spare.length ? spare[0] : null;
+    // somebody earlier in the night bought the Talker a clue of their own: one door it isn't
+    if (!talkerClue && def.extraClue?.(c)) {
+      const wrong = rng.pick(clues.filter((cl) => !cl.truth));
+      if (wrong) talkerClue = { ...wrong, bad: false, seen: wrong.real };
+    }
 
     b.data = {
       talker, correct, openings: openings.map((o) => ({ id: o.id, label: o.label, blurb: o.blurb ?? null })),

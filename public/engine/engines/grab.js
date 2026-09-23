@@ -104,7 +104,7 @@ export default {
     const driverP = def.driver === false ? null : c.freeByJob('driver');
     const driver = driverP && pool.includes(driverP.id) && pool.length >= 2 ? driverP.id : null;
     const vault = Math.max(0, def.vault(c));
-    const rounds = def.rounds ?? 5;
+    const rounds = Math.max(1, Math.min(5, (typeof def.rounds === 'function' ? def.rounds(c) : def.rounds) ?? 5));
     const shares = SHARES.slice(0, rounds);
     const sum = shares.reduce((a, b) => a + b, 0);
     b.data = {

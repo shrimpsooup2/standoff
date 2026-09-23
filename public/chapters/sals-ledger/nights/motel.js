@@ -32,10 +32,12 @@ function garyRoom(c) {
 export default {
   id: 'motel', title: 'The Motel', day: nightDay, kicker: nightKicker,
   beats: [
+    'clerk',
     'desk',
-    { maybe: 'street', chance: 0.3 },
+    { maybe: 'street', chance: 0.2 },
     'gary',
     { if: (c) => c.memo.garyChoice === 'talk', then: 'talk-him-down' },
+    { if: (c) => c.flag('gary') !== 'prout', then: 'suitcase' },
     { oneOf: [{ beat: ['headlights', 'stall'], weight: 2 }, { beat: 'the-ice-machine', weight: 1 }] },
     'count',
   ],
@@ -50,6 +52,80 @@ export default {
     );
   },
   defs: {
+    clerk: {
+      engine: 'vote', time: '11:40 P.M.', place: 'The office, Route 9 Motor Inn', title: 'The Night Clerk', kicker: 'A VOTE',
+      text: (c) => [
+        `The night clerk is a woman in her sixties called Bernadette, doing a word search behind bulletproof glass that has a bullet hole in it. ${c.rng.pick(['Somebody has already paid her not to say which room.', 'She has the look of a woman who has been offered money twice this week already.'])} The register is on the counter on her side of the glass.`,
+        'What do you do about Bernadette?',
+      ],
+      options: (c) => [
+        { id: 'pay', label: 'Pay her more than the last people did', blurb: `${money(5000)} each. She won’t say which room — she has principles — but she’ll say which room it isn’t, and cover for you if you knock wrong.`, risk: 0.1, reward: 0.5 },
+        { id: 'register', label: 'Keep her talking while somebody reads the register', blurb: 'Free, if it works. She has been a night clerk for thirty years.', risk: 0.5, reward: 0.5 },
+        { id: 'nothing', label: 'Walk straight past', blurb: 'Knock on doors like guests. Guests knock on doors.', risk: 0.3, reward: 0.1 },
+      ],
+      resolve(c, { choice }) {
+        if (choice === 'pay') {
+          let n = 0;
+          for (const p of c.free) n += c.charge(p.id, 5000);
+          c.memo.clerkTalked = true;
+          c.memo.clerkPaid = true;
+          c.line(`${money(n)} slides under the glass. Bernadette counts it without looking up from her word search and says, to the word search, “Not the one with the ice machine noise.” Whoever’s doing the talking gets one door it isn’t.`);
+          return;
+        }
+        if (choice === 'register') {
+          if (c.rng.chance(0.5)) {
+            c.memo.clerkTalked = true;
+            c.line('Somebody asks Bernadette about her word search, and she has a lot to say about her word search. Somebody else reads four “John Smith”s upside down. Whoever’s doing the talking gets one door it isn’t.');
+          } else {
+            c.memo.clerkAngry = true;
+            c.line('Bernadette sees the reflection in the glass, closes the register, and picks up the phone. She doesn’t dial yet. She just holds it where you can see it.');
+          }
+          return;
+        }
+        c.line('You walk past the office like guests. Bernadette doesn’t look up. She doesn’t need to.');
+      },
+    },
+
+    suitcase: {
+      engine: 'draft', time: '12:40 A.M.', place: garyRoom, title: 'Gary’s Suitcase', kicker: 'TAKE ONE, PASS THE CASE',
+      text: (c) => [
+        `Gary has a brown suitcase that he will not let out of his sight, and then, all at once, he does. “Take it,” he says. “I don’t want it any more. I don’t want any of it.” ${c.flag('gary') === 'basement' ? 'He is going to Nonna’s basement with a pillowcase and nothing else.' : c.flag('gary') === 'arizona' ? 'He is getting on a bus to Phoenix with one change of clothes.' : 'He is going to his sister’s with a toothbrush.'}`,
+        'Everybody takes one thing out of Gary’s suitcase, and passes it on. Everybody sees what everybody takes.',
+      ],
+      items(c) {
+        const names = c.rng.shuffle(c.players.map((p) => p.id));
+        const pool = [
+          { id: 'savings', label: 'Gary’s savings, in a sock', blurb: `${money(c.scale(25000))} in twenties. He has been saving it since 1989 for a boat.`, kind: 'cash', value: c.scale(25000) },
+          { id: 'copy', label: 'A copy of a ledger page', blurb: 'Gary copied a page, in case. Somebody’s name is on it.', kind: 'page', value: 30000, about: names[0] },
+          { id: 'copy2', label: 'Another copied page', blurb: 'Different ink. Different name.', kind: 'page', value: 30000, about: names[1] ?? names[0] },
+          { id: 'diary', label: 'Gary’s diary', blurb: 'Five years of who came to Sal’s office and when. Dirt on somebody, in very neat handwriting.', kind: 'card', card: 'dirt', value: 25000 },
+          { id: 'calculator', label: 'Gary’s calculator', blurb: 'A 1987 Texas Instruments. Worth nothing. It is the only thing in the case he looks sad to lose.', kind: 'nothing', value: 0 },
+          { id: 'receipts', label: 'A shoebox of Sal’s receipts', blurb: 'Burn them, and Prout’s tax case loses its arithmetic: the Case File goes down by one.', kind: 'burn', value: 20000 },
+        ];
+        return c.rng.shuffle(pool).slice(0, Math.max(2, c.free.length));
+      },
+      bot(c, p, open) {
+        const own = open.find((it) => it.kind === 'page' && it.about === p.id);
+        if (own) return own.id;
+        if (p.secret?.id === 'garys-friend') { const calc = open.find((it) => it.id === 'calculator'); if (calc) return calc.id; }
+        return null;
+      },
+      resolve(c, { picks }) {
+        const items = c.beat.data.items;
+        for (const [pid, id] of Object.entries(picks)) {
+          const it = items.find((x) => x.id === id);
+          if (!it) continue;
+          if (it.kind === 'cash') { c.give(pid, it.value, 'Gary’s sock'); c.line(`${c.name(pid)} took Gary’s savings. Gary watched them do it.`); }
+          else if (it.kind === 'page') {
+            if (it.about === pid) { c.caseFile(-1, 'a copied page, eaten'); c.line(`${c.name(pid)} found their own name on a copied page and ate it on the spot.`); }
+            else { const card = c.card(pid, 'ledger-page'); if (card) { card.about = it.about; card.line = `${c.name(it.about)} — Gary’s copy`; } c.line(`${c.name(pid)} took the copied page with ${c.name(it.about)}’s name on it. ${c.name(it.about)} saw.`); }
+          } else if (it.kind === 'card') { c.card(pid, it.card); c.line(`${c.name(pid)} took Gary’s diary.`); }
+          else if (it.kind === 'burn') { c.caseFile(-1, 'Sal’s receipts, burned in a motel ashtray'); c.line(`${c.name(pid)} burned Sal’s receipts in the ashtray, one at a time, while Gary watched and said nothing.`); }
+          else { c.line(`${c.name(pid)} took Gary’s calculator. Gary looked at them with enormous gratitude and said, “Look after it.”`); c.fact(pid, 'calc', `Did ${c.name(pid)} take Gary’s calculator?`, true); }
+        }
+      },
+    },
+
     desk: {
       engine: 'whispers', time: '11:50 P.M.', place: 'The front desk, Route 9 Motor Inn', title: 'The Desk', kicker: 'WHICH ROOM?',
       whoLabel: 'Which door is Gary behind?',
@@ -61,6 +137,7 @@ export default {
         ];
       },
       openings: () => ROOMS,
+      extraClue: (c) => !!c.memo.clerkTalked,
       correct: (c) => { c.memo.garyRoom = c.rng.pick(ROOMS).id; return c.memo.garyRoom; },
       filler: () => FILLER,
       resolve(c, { success, openingLabel, talker }) {
@@ -75,7 +152,8 @@ export default {
           'a Castellano cousin, who was also looking for Gary, and was very interested to see you',
         ]);
         c.line(`${c.name(talker)} knocked on ${openingLabel}. It was ${wrong}. By the time you found the right door, every light in the motel was on and Gary had heard all of it.`);
-        c.heat(talker, 1, 'knocked on the wrong door');
+        if (c.memo.clerkPaid) c.line('The clerk tells everybody who comes out in a towel that it was a drunk looking for his own room. She earned her money.');
+        else c.heat(talker, 1, 'knocked on the wrong door');
       },
     },
 
@@ -191,7 +269,7 @@ export default {
     'the-ice-machine': {
       engine: 'roll', time: '12:50 A.M.', place: 'The breezeway, Route 9 Motor Inn', title: 'The Ice Machine', kicker: 'GET AWAY',
       text: () => ['On the way out somebody walks into the ice machine. It makes the noise it makes, which is like a piano falling down a staircase. Doors start opening all along the breezeway.'],
-      target: () => 6,
+      target: (c) => 6 + (c.memo.clerkAngry ? 1 : 0),
       label: 'Out before the doors open',
       stakes: 'Miss it and half the motel gets a look at you.',
       resolve(c, r) {

@@ -141,14 +141,16 @@ export default {
   start(g, b, def) {
     const c = g.ctx();
     const who = (def.voters?.(c) ?? g.free().map((p) => p.id)).filter((id) => g.hasPlayer(id));
+    // a beat can be a vote on people one way and on options another, depending on how things went
+    const people = def.candidates?.(c) ?? null;
     let options;
-    if (def.candidates) {
-      options = def.candidates(c).map((id) => ({ id, label: g.name(id), player: true }));
+    if (people) {
+      options = people.map((id) => ({ id, label: g.name(id), player: true }));
     } else {
-      options = (def.options(c) ?? []).map((o) => ({ ...o }));
+      options = (def.options?.(c) ?? []).map((o) => ({ ...o }));
     }
     options = assignFaces(options);
-    const noSelf = !!(def.candidates || def.noSelf) && def.noSelf !== false;
+    const noSelf = !!(people || def.noSelf) && def.noSelf !== false;
     // nobody votes in a vote where the only name on the list is their own
     const able = noSelf ? who.filter((id) => options.some((o) => o.id !== id)) : who;
     b.data = {

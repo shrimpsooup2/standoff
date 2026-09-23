@@ -66,6 +66,13 @@ function freshState({ code, chapter, seed }) {
   };
 }
 
+/** Follow a pointer like "3.then.1" into a night's beat list. */
+function entryAt(beats, path) {
+  let at = beats;
+  for (const seg of path.split('.')) at = Array.isArray(at) ? at[Number(seg)] : at?.[seg];
+  return at;
+}
+
 export class Game {
   constructor({ code, chapter, seed, state } = {}) {
     this.s = state ?? freshState({ code, chapter, seed });
@@ -416,29 +423,45 @@ export class Game {
     const sc = this.s.scene;
     const def = this.nightDef;
     const c = this.ctx();
-    for (let guard = 0; guard < 64; guard++) {
-      if (sc.queue.length) return sc.queue.shift();
+    for (let guard = 0; guard < 256; guard++) {
+      if (sc.queue.length) {
+        const head = sc.queue.shift();
+        if (!head.startsWith('@')) return head;
+        // a step inside a branch, decided only now that everything before it has happened
+        const path = head.slice(1);
+        sc.queue.unshift(...this.expand(entryAt(def.beats, path), c, def, path));
+        continue;
+      }
       if (sc.cursor >= def.beats.length) return null;
-      const entry = def.beats[sc.cursor];
+      const at = sc.cursor;
+      const entry = def.beats[at];
       sc.cursor += 1;
-      const ids = this.expand(entry, c, def);
-      sc.queue.push(...ids);
+      sc.queue.push(...this.expand(entry, c, def, String(at)));
     }
     return null;
   }
 
-  /** One entry of a night's beat list into zero or more concrete beat ids. */
-  expand(entry, c, def) {
+  /**
+   * One entry of a night's beat list into zero or more beat ids. A list inside
+   * a branch isn't worked out all at once: each step is left as a pointer
+   * ("@3.then.1") and decided when the night gets to it, so a later step can
+   * depend on how an earlier one went.
+   */
+  expand(entry, c, def, path = null) {
     if (entry == null) return [];
     if (typeof entry === 'string') return [entry.includes('/') ? entry : `${def.id}/${entry}`];
-    if (Array.isArray(entry)) return entry.flatMap((e) => this.expand(e, c, def));
+    if (Array.isArray(entry)) {
+      if (path == null) return entry.flatMap((e) => this.expand(e, c, def));
+      return entry.map((_, i) => `@${path}.${i}`);
+    }
     if (typeof entry === 'function') return this.expand(entry(c), c, def);
+    const sub = (key) => (path == null ? null : `${path}.${key}`);
     if (entry.oneOf) {
       // a weighted pick; `{ beat: null }` is a way of saying "sometimes, nothing"
       const isOpt = (e) => !!e && typeof e === 'object' && !Array.isArray(e) && ('beat' in e || 'weight' in e);
-      const choices = entry.oneOf.filter((e) => !(isOpt(e) && e.when && !e.when(c)));
+      const choices = entry.oneOf.map((e, i) => [e, i]).filter(([e]) => !(isOpt(e) && e.when && !e.when(c)));
       if (!choices.length) return [];
-      const weights = choices.map((e) => (isOpt(e) && e.weight != null ? e.weight : 1));
+      const weights = choices.map(([e]) => (isOpt(e) && e.weight != null ? e.weight : 1));
       const total = weights.reduce((a, b) => a + b, 0);
       let r = this.rng() * total;
       let i = 0;
@@ -446,10 +469,10 @@ export class Game {
         r -= weights[i];
         if (r <= 0) break;
       }
-      const pick = choices[i];
-      return this.expand(isOpt(pick) ? pick.beat : pick, c, def);
+      const [pick, at] = choices[i];
+      return isOpt(pick) ? this.expand(pick.beat, c, def, sub(`oneOf.${at}.beat`)) : this.expand(pick, c, def, sub(`oneOf.${at}`));
     }
-    if (entry.if) return this.expand(entry.if(c) ? entry.then : entry.else, c, def);
+    if (entry.if) return entry.if(c) ? this.expand(entry.then, c, def, sub('then')) : this.expand(entry.else, c, def, sub('else'));
     if (entry.maybe) {
       // a complication: sometimes the night has other plans
       const chance = typeof entry.chance === 'function' ? entry.chance(c) : entry.chance ?? 0.35;
@@ -461,7 +484,7 @@ export class Game {
       this.s.usedComplications.push(pick.id);
       return [pick.id];
     }
-    if (entry.beat) return (!entry.when || entry.when(c)) ? this.expand(entry.beat, c, def) : [];
+    if (entry.beat) return (!entry.when || entry.when(c)) ? this.expand(entry.beat, c, def, sub('beat')) : [];
     return [];
   }
 

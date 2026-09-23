@@ -9,8 +9,10 @@ export default {
     'two-am',
     'pickup',
     'apartment',
+    'precinct',
     { maybe: 'street', chance: 0.2 },
     'bail',
+    'who-told',
     'count',
   ],
   close(c) {
@@ -147,16 +149,72 @@ export default {
       },
     },
 
+    precinct: {
+      engine: 'choose', time: '5:00 A.M.', place: 'Outside the 9th Precinct', title: 'The Steps', kicker: 'YOUR CALL',
+      when: (c) => !!c.memo.held,
+      text: (c) => [
+        `${c.name(c.memo.held)} is inside the 9th Precinct in a room with a two-way mirror and a detective who has all night. Outside, it’s five in the morning and starting to get light.`,
+        `Everybody decides, alone, where to be at dawn. ${c.name(c.memo.held)} will see who was on the steps when they come out.`,
+      ],
+      who: (c) => c.free.map((p) => p.id).filter((id) => id !== c.memo.held),
+      options: (c) => [
+        { id: 'wait', label: 'Wait on the steps', blurb: 'Coffee from the cart, all morning, where they can see you from the window. Where everybody can see you.', honest: true },
+        { id: 'morty', label: 'Wake Morty up and send him in', blurb: '$5k of your own for Morty’s cab and his temper. The bail comes down.', brave: true },
+        { id: 'home', label: 'Go home and sleep', blurb: 'There’s nothing anybody can do until eight.' },
+      ],
+      bot(c, p) {
+        const held = c.memo.held;
+        const likes = p.secret?.partner === held || (['soft-spot', 'big-brother'].includes(p.secret?.id) && p.secret.target === held);
+        if (likes) return { option: c.rng.chance(0.5) ? 'wait' : 'morty' };
+        return { option: p.style === 'loyal' ? 'wait' : p.style === 'nervous' ? 'home' : c.rng.pick(['wait', 'home', 'home']) };
+      },
+      resolve(c, { choices }) {
+        const held = c.memo.held;
+        c.memo.waited = [];
+        for (const [pid, ch] of Object.entries(choices)) {
+          if (ch.option === 'wait') { c.memo.waited.push(pid); c.g.bond(pid, held, 'waited-outside'); if (c.rng.chance(0.25)) c.heat(pid, 1, 'hanging round the precinct'); }
+          else if (ch.option === 'morty') { c.charge(pid, 5000); c.memo.morty = true; c.g.bond(pid, held, 'sent-morty'); }
+        }
+        if (c.memo.waited.length) c.note(held, `From the window of the interview room you could see the steps. ${c.list(c.memo.waited.map((id) => c.name(id)))} ${c.memo.waited.length === 1 ? 'was' : 'were'} there all morning.`, 'the 9th Precinct');
+        c.line(c.memo.morty ? 'At six, Morty Klein goes up the precinct steps in his pyjama top under his coat, furious, which is exactly what everybody wanted.' : c.memo.waited.length ? `At dawn there ${c.memo.waited.length === 1 ? 'is somebody' : 'are people'} on the steps of the 9th Precinct with coffee from the cart.` : 'At dawn the steps of the 9th Precinct are empty.');
+      },
+    },
+
+    'who-told': {
+      engine: 'vote', time: '11:00 A.M.', place: 'Nonna’s kitchen', title: 'Who Told Them?', kicker: 'NAME SOMEBODY',
+      when: (c) => !!c.memo.held && c.free.filter((p) => p.id !== c.memo.held).length >= 2,
+      text: (c) => [
+        `Nonna has one question, and she asks it with the kettle in her hand: “How did Prout know where ${c.name(c.memo.held)} sleeps?”`,
+        'Name somebody. If it’s whoever is feeding Prout, they’ll be marked for it. If it’s somebody who took his deal, Nonna will want a word. If it’s nobody, they will remember who pointed.',
+      ],
+      candidates: (c) => c.free.map((p) => p.id).filter((id) => id !== c.memo.held),
+      resolve(c, { choice, votes }) {
+        const t = c.p(choice);
+        if (!t) return;
+        if (['rat', 'turncoat'].includes(t.secret?.id)) {
+          c.stamp(t.id, 'RAT');
+          c.caseFile(-1, 'Prout’s source was named at Nonna’s table');
+          c.line(`${t.name}. Nonna puts the kettle down very slowly. She doesn’t say anything. She doesn’t have to. There is a new word on ${t.name}’s seat.`);
+        } else if (t.deal) {
+          c.line(`${t.name}. Nonna looks at ${t.name} for a long time. “You spoke to him,” she says. It isn’t a question. ${t.name} doesn’t answer.`);
+          c.caseFile(-1, 'a witness who is a little less sure of themselves now');
+        } else {
+          c.line(`${t.name}. It wasn’t ${t.name}. Nonna knows it, and says so, and pours ${t.name} the first cup.`);
+          for (const [pid, v] of Object.entries(votes)) if (v === choice && pid !== choice) c.grudge(choice, pid, 'said you told Prout');
+        }
+      },
+    },
+
     bail: {
       engine: 'vote', time: '8:30 A.M.', place: 'Nonna’s kitchen', title: 'Bail', kicker: 'A VOTE',
       when: (c) => !!c.memo.held && c.p(c.memo.held)?.jailUntil != null,
       text: (c) => [
-        `${c.name(c.memo.held)} used their phone call${c.p(c.memo.held).used?.jail?.call ? '' : ' on nobody, which is its own message'}. The judge set bail at ${money(c.scale(25000))}, cash. It can come out of the Bag.`,
+        `${c.name(c.memo.held)} used their phone call${c.p(c.memo.held).used?.jail?.call ? '' : ' on nobody, which is its own message'}. The judge set bail at ${money(bailOf(c))}, cash${c.memo.morty ? ' — Morty got it down' : ''}. It can come out of the Bag.`,
         `Pay it, and ${c.name(c.memo.held)} is home by lunch. Don’t, and they spend another night inside.`,
       ],
       voters: (c) => c.free.map((p) => p.id).filter((id) => id !== c.memo.held),
       options: (c) => [
-        { id: 'pay', label: 'Pay the bail', blurb: `${money(c.scale(25000))} out of the Bag. ${c.name(c.memo.held)} is back tonight.`, risk: 0.2, reward: 0.3 },
+        { id: 'pay', label: 'Pay the bail', blurb: `${money(bailOf(c))} out of the Bag. ${c.name(c.memo.held)} is back tonight.`, risk: 0.2, reward: 0.3 },
         { id: 'leave', label: 'Leave them in', blurb: `Save the money. ${c.name(c.memo.held)} misses tomorrow night, and has a long time to think about who voted how.`, risk: 0.5, reward: 0.5 },
       ],
       bot(c, p) {
@@ -168,14 +226,14 @@ export default {
       resolve(c, { choice, votes }) {
         const held = c.p(c.memo.held);
         c.memo.bail = choice;
-        if (choice === 'pay' && c.bag.total >= c.scale(25000)) {
-          c.bagTake(c.scale(25000));
+        if (choice === 'pay' && c.bag.total >= bailOf(c)) {
+          c.bagTake(bailOf(c));
           held.jailUntil = null;
-          c.line(`${money(c.scale(25000))} out of the Bag. ${held.name} walks out of the 9th Precinct at noon, squinting.`);
+          c.line(`${money(bailOf(c))} out of the Bag. ${held.name} walks out of the 9th Precinct at noon, squinting${c.memo.waited?.length ? `, and ${c.list(c.memo.waited.map((id) => c.name(id)))} ${c.memo.waited.length === 1 ? 'is' : 'are'} still on the steps` : ''}.`);
         } else {
           held.jailUntil = c.s.week.n + 1;
           c.line(choice === 'pay'
-            ? `The Bag doesn’t have ${money(c.scale(25000))}. ${held.name} stays in, and misses tomorrow night.`
+            ? `The Bag doesn’t have ${money(bailOf(c))}. ${held.name} stays in, and misses tomorrow night.`
             : `${held.name} stays in, and misses tomorrow night.`);
           for (const [pid, v] of Object.entries(votes)) if (v === 'leave') c.grudge(held.id, pid, 'left you inside');
         }
@@ -188,6 +246,11 @@ export default {
     ] }),
   },
 };
+
+/** Bail, and what Morty turning up in his pyjamas does to it. */
+function bailOf(c) {
+  return round5k(c.scale(25000) * (c.memo.morty ? 0.5 : 1));
+}
 
 function assignFaces(ids) {
   const n = ids.length;

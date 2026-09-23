@@ -1,6 +1,7 @@
 // Night 1: three banks on a napkin, one door, one vault, one car.
 
 import { counting, getaway, money, round5k, names, nightKicker } from '../common.js';
+import { crew, cut, grabbers, onPost } from '../heist.js';
 
 const BANKS = {
   'first-federal': {
@@ -31,11 +32,14 @@ export default {
   id: 'three-banks', title: 'The Three Banks', act: 1, day: 'MONDAY NIGHT', kicker: nightKicker,
   beats: [
     'napkin',
+    'crew',
     { if: (c) => c.flag('bank') === 'first-federal', then: 'door-ff', else: { if: (c) => c.flag('bank') === 'castellano', then: 'door-castellano', else: 'door-harbor' } },
-    { maybe: 'heist', chance: 0.3 },
+    { if: (c) => c.flag('bank') === 'first-federal', then: 'pruitt', else: { if: (c) => c.flag('bank') === 'castellano', then: 'nicky', else: 'walt' } },
+    { maybe: 'heist', chance: 0.2 },
     'vault',
-    { maybe: 'heist', chance: 0.3 },
+    { maybe: 'heist', chance: 0.2 },
     'car',
+    'cut',
     'count',
   ],
   close(c) {
@@ -106,6 +110,143 @@ export default {
           const n = c.charge(c.memo.mother, 20000);
           c.line(`${c.name(c.memo.mother)}’s mother banks at First Federal. ${c.name(c.memo.mother)} will be putting ${money(n)} back into her account, quietly, before she checks.`);
           c.remember(`${c.name(c.memo.mother)} robbed their own mother's bank.`, { who: c.memo.mother, kind: 'mother' });
+        }
+      },
+    },
+
+    crew: crew({
+      time: '11:20 P.M.', place: (c) => `Across the street from ${bank(c).label}`,
+      text: (c) => [
+        `${bank(c).label} at twenty past eleven: ${{ 'first-federal': 'one light on, in the manager’s office', harbor: 'Walt’s booth lit up like a lighthouse', castellano: 'every light on, because the Castellanos can afford the electric' }[c.flag('bank')] ?? 'quiet'}. Before anybody goes near the door, everybody picks where they’re standing tonight.`,
+        'Inside is where the money is. Outside is where it’s safe — and everybody outside makes it safer for everybody inside. What the people outside get is whatever the people inside decide to give them.',
+      ],
+      posts: () => [
+        { id: 'inside', label: 'Inside, with the bags', blurb: 'Your hands on the money. Your face on the cameras.', where: 'inside' },
+        { id: 'corner', label: 'On the corner of Water Street', blurb: 'Watch for patrol cars. With somebody on the corner, the getaway is one easier.', max: 2, where: 'on the corner' },
+        { id: 'phone', label: 'The payphone across the street', blurb: 'Ring the alarm company as the manager and tell them it’s a test. The alarm starts one sleepier.', max: 1, where: 'at the payphone' },
+      ],
+    }),
+
+    pruitt: {
+      engine: 'vote', time: '11:46 P.M.', place: 'The manager’s office, First Federal', title: 'Mr. Pruitt', kicker: 'A VOTE',
+      text: (c) => (c.memo.doorClean ? [
+        'Harold Pruitt let you in, and now he doesn’t know what to do with himself. He has offered everybody a lollipop. He has asked twice whether this is the retirement party. He has a cake coming on Friday.',
+        'What do you do with Mr. Pruitt?',
+      ] : [
+        'Harold Pruitt did not let you in, and he is backing towards his desk very slowly with his hands up. Under the desk, everybody knows, there is a button. He knows you know.',
+        'What do you do about the button?',
+      ]),
+      options: (c) => (c.memo.doorClean ? [
+        { id: 'chair', label: 'Tie him to his chair, nicely', blurb: 'With his own tie, loosely. He’ll be found at seven with a story.', risk: 0.1, reward: 0.2 },
+        { id: 'watch', label: 'Let him watch', blurb: 'He knows the combination to the cash cart and he is dying to tell someone. The vault gets bigger. So does what he tells Prout.', risk: 0.5, reward: 0.7 },
+        { id: 'party', label: 'Promise him a retirement party', blurb: 'He never gets taken anywhere. He’ll keep his mouth shut for a drink and an envelope out of the Bag.', risk: 0.2, reward: 0.4 },
+      ] : [
+        { id: 'rush', label: 'Get to the button first', blurb: 'Somebody vaults the desk. It’s a big desk.', risk: 0.5, reward: 0.5 },
+        { id: 'talk', label: 'Talk him out of it', blurb: 'He’s sixty-four and retiring on Friday. Remind him. The Talker’s better at this.', risk: 0.4, reward: 0.4 },
+        { id: 'let', label: 'Let him press it and move fast', blurb: 'The alarm will be wide awake. You’ll have less time and fewer of you will be seen.', risk: 0.7, reward: 0.3 },
+      ]),
+      resolve(c, { choice }) {
+        const talker = c.freeByJob('talker');
+        if (choice === 'chair') c.line('Pruitt is tied to his chair with his own tie. He asks if somebody could put the radio on. Somebody does. It’s the Mets, losing.');
+        else if (choice === 'watch') {
+          c.memo.vaultMult = 1.3;
+          c.caseFile(1, 'Harold Pruitt, who watched everything');
+          c.line('Pruitt reads the combination off a Post-it under his blotter and watches you work, rapt. The cash cart opens. He is going to tell Prout all of it, in order, with diagrams.');
+        } else if (choice === 'party') {
+          const n = c.bagTake(c.scale(10000));
+          c.set('pruittFriend', true);
+          c.line(`${money(n)} out of the Bag, in an envelope Pruitt says he’s going to frame. He’ll see you at Dolores’s on Friday. He hasn’t been this happy since 1991.`);
+        } else if (choice === 'rush') {
+          if (c.rng.chance(0.55)) c.line('Somebody goes over the desk like a hurdler and gets a hand on Pruitt’s wrist an inch from the button. He apologises.');
+          else { c.memo.alarmMod = 2; c.line('It’s a very big desk. Pruitt presses the button, then apologises for pressing it.'); }
+        } else if (choice === 'talk') {
+          if (c.rng.chance(talker ? 0.65 : 0.45)) c.line(`${talker ? talker.name : 'Somebody'} talks about Friday, and the cake, and Ellen, and the dog. Pruitt takes his hand away from the desk and sits down.`);
+          else { c.memo.alarmMod = 2; c.line('Pruitt listens politely, says “I’m sorry, I have to,” and presses it.'); }
+        } else {
+          c.memo.alarmMod = 2;
+          c.memo.fast = true;
+          c.line('Pruitt presses the button with a look of real relief. Everybody runs for the cart.');
+        }
+      },
+    },
+
+    walt: {
+      engine: 'vote', time: '11:46 P.M.', place: 'Walt’s booth, Harbor Savings', title: 'Walt', kicker: (c) => (c.memo.doorClean ? 'WHO SITS WITH WALT?' : 'A VOTE'),
+      text: (c) => (c.memo.doorClean ? [
+        'Walt let you in, and now he’d like somebody to sit with him. He has poured a second coffee from the thermos. He wants to talk about the Mets, and 1979, and his knees. If nobody sits with him, he’ll wander into the vault to see what’s taking so long.',
+        'Somebody has to sit with Walt while everybody else works. Whoever it is won’t see the inside of the vault.',
+      ] : [
+        'Walt has his hand on the radio clipped to his belt. He hasn’t pressed it. He is looking at the crew one face at a time, the way he looked at the Brinks man in 1981 who turned out to be a Brinks man.',
+        'What do you do about the radio?',
+      ]),
+      candidates: (c) => (c.memo.doorClean ? c.free.filter((p) => onPost(c, 'inside').includes(p)).map((p) => p.id) : null),
+      options: (c) => (c.memo.doorClean ? null : [
+        { id: 'grab', label: 'Take the radio off him', blurb: 'He’s seventy-three. He boxed. It could go either way.', risk: 0.5, reward: 0.5 },
+        { id: 'sal', label: 'Tell him the truth: it’s for Sal', blurb: 'Walt has known Sal forty years. Maybe that matters.', risk: 0.5, reward: 0.6 },
+        { id: 'fast', label: 'Let him call it in and move fast', blurb: 'The alarm wakes up. You’ll be quick.', risk: 0.7, reward: 0.3 },
+      ]),
+      noSelf: false,
+      resolve(c, { choice }) {
+        if (c.memo.doorClean) {
+          c.memo.sitter = choice;
+          c.memo.alarmMod = -1;
+          c.line(`${c.name(choice)} sits with Walt. Walt pours the coffee and starts on 1979. Nobody goes near his radio. The alarm stays asleep.`);
+          c.note(choice, 'Walt tells you about the night in 1981 he caught the Brinks man. Then he tells you where he keeps the keys to the side door, “just in case, God forbid.” (+1 on your next roll.)', 'Walt');
+          (c.p(choice).edges ??= []).push({ label: 'Walt’s side door' });
+          return;
+        }
+        if (choice === 'grab') {
+          if (c.rng.chance(0.5)) c.line('Walt lets go of the radio and says, “Fine. Fine. I’m seventy-three.”');
+          else { c.memo.alarmMod = 2; c.caseFile(1, 'Walt Kowalski, who got a call in'); c.line('Walt gets a left hook in before anybody gets the radio, and a call in before that.'); }
+        } else if (choice === 'sal') {
+          if (c.rng.chance(0.45)) { c.memo.alarmMod = -1; c.line('Walt takes his hand off the radio. “For Sal,” he says. He sits down and pours a coffee. He won’t look at the vault.'); }
+          else { c.memo.alarmMod = 2; c.caseFile(1, 'Walt Kowalski, who called it in anyway'); c.line('“Sal would never,” says Walt, and presses the button.'); }
+        } else {
+          c.memo.alarmMod = 2;
+          c.memo.fast = true;
+          c.line('Walt calls it in, very calmly, reading the plate numbers off a card he keeps for the purpose. Everybody runs.');
+        }
+      },
+    },
+
+    nicky: {
+      engine: 'vote', time: '11:46 P.M.', place: 'The front desk, Castellano Credit Union', title: 'Nicky', kicker: 'A VOTE',
+      text: (c) => (c.memo.doorClean ? [
+        'Nicky Castellano believes you. He believes it so much that he wants to help. He has a key to the vault, which he isn’t supposed to have, and he is very excited about being included in something by his uncle for once.',
+        'What do you do with Nicky?',
+      ] : [
+        'Nicky Castellano doesn’t believe you, and he has the phone off the hook and is dialling with a shaking finger. It’s a number with a lot of sevens in it. Everybody knows whose.',
+        'What do you do about the phone?',
+      ]),
+      options: (c) => (c.memo.doorClean ? [
+        { id: 'help', label: 'Let him help', blurb: 'He has the key. The vault gets bigger. He will absolutely tell his uncle how helpful he was.', risk: 0.6, reward: 0.7 },
+        { id: 'bathroom', label: 'Lock him in the bathroom', blurb: 'With a magazine. He won’t mind for about an hour.', risk: 0.2, reward: 0.3 },
+        { id: 'pay', label: 'Pay him to go home', blurb: `${money(10000)} out of the Bag. He’s paid in “experience” and he’s broke.`, risk: 0.2, reward: 0.3 },
+      ] : [
+        { id: 'grab', label: 'Take the phone', blurb: 'He’s twenty-two and fast. You’re not twenty-two.', risk: 0.5, reward: 0.5 },
+        { id: 'hang', label: 'Hang up for him and say sorry', blurb: 'He’s scared. Maybe he stays scared.', risk: 0.5, reward: 0.4 },
+        { id: 'ring', label: 'Let it ring and move', blurb: 'Vinnie’s phone rings in an empty club. For about ten minutes.', risk: 0.7, reward: 0.3 },
+      ]),
+      resolve(c, { choice }) {
+        if (choice === 'help') {
+          c.memo.vaultMult = 1.3;
+          c.set('nickyHelped', true);
+          c.line('Nicky opens the vault with a key on a lanyard that says WORLD’S BEST NEPHEW. He holds the bags. He is having the best night of his life. Vinnie will hear every detail of it by breakfast.');
+        } else if (choice === 'bathroom') c.line('Nicky goes into the bathroom with a copy of Sports Illustrated and no argument. You hear him talking to himself about the Rangers through the door.');
+        else if (choice === 'pay') {
+          const n = c.bagTake(c.scale(10000));
+          c.line(`${money(n)} out of the Bag. Nicky counts it twice, says “I was never here,” and leaves in the Honda Civic.`);
+        } else if (choice === 'grab') {
+          if (c.rng.chance(0.5)) c.line('The phone goes in a drawer. Nicky sits on the floor and says his uncle is going to kill him. He may be right.');
+          else { c.memo.alarmMod = 1; c.set('vinnieCalled', true); c.line('Nicky gets three rings in before the phone goes. Somewhere across the river a light comes on.'); }
+        } else if (choice === 'hang') {
+          if (c.rng.chance(0.5)) c.line('You hang up for him and say sorry. Nicky says sorry too. Everybody is very sorry.');
+          else { c.memo.alarmMod = 1; c.set('vinnieCalled', true); c.line('You hang up for him. He picks it up again the second you turn round.'); }
+        } else {
+          c.memo.alarmMod = 2;
+          c.memo.fast = true;
+          c.set('vinnieCalled', true);
+          c.line('The phone rings in the empty social club across the river for ten minutes. Then somebody picks it up.');
         }
       },
     },
@@ -201,13 +342,17 @@ export default {
           castellano: 'The Castellano vault is new, clean and full. It is the vault of a family that has never once been robbed, until now.',
         }[b];
         const driver = c.freeByJob('driver');
+        const phone = onPost(c, 'phone')[0];
         return [
-          `${door} ${inside}`,
+          `${door} ${inside}${c.memo.sitter ? ` Somewhere behind you, ${c.name(c.memo.sitter)} is hearing about 1979.` : ''}${phone ? ` Across the street, ${phone.name} is on the payphone to the alarm company, being the manager.` : ''}`,
           `Every round, grab or go. The money gets split between whoever grabs, and the alarm gets twitchier every time. ${driver ? `${driver.name} is outside with the engine running, and decides when it leaves.` : 'Nobody is watching the car.'}`,
         ];
       },
-      vault: (c) => round5k(c.scale(bank(c).vault) * (0.85 + c.rng() * 0.3)),
-      alarm: (c) => bank(c).alarm + (c.memo.doorClean ? 0 : 1),
+      who: (c) => grabbers(c).filter((id) => id !== c.memo.sitter),
+      // moving fast means fewer rounds in the vault before you have to be out
+      rounds: (c) => (c.memo.fast ? 3 : 5),
+      vault: (c) => round5k(c.scale(bank(c).vault) * (c.memo.vaultMult ?? 1) * (0.85 + c.rng() * 0.3)),
+      alarm: (c) => Math.max(0, bank(c).alarm + (c.memo.doorClean ? 0 : 1) + (c.memo.alarmMod ?? 0) - (onPost(c, 'phone').length ? 1 : 0)),
       angle: (c) => (c.flag('bank') === 'harbor' && c.memo.insider && !c.isAway(c.memo.insider) ? {
         pid: c.memo.insider, round: 1, money: c.scale(40000), alarm: 1,
         label: `Work ${c.memo.cousin}’s drawer`,
@@ -217,6 +362,7 @@ export default {
       resolve(c, r) {
         const total = Object.values(r.hauls).reduce((a, b) => a + b, 0);
         c.memo.take = total;
+        c.memo.hauls = r.hauls;
         c.memo.tripped = r.tripped;
         if (c.memo.debtor && total > 0 && c.flag('bank') === 'castellano') {
           c.set(`debtBurned:${c.memo.debtor}`, true);
@@ -234,8 +380,10 @@ export default {
         const d = c.freeByJob('driver');
         return [`${d ? `${d.name} has the engine running` : 'Somebody grabs the keys'}. ${c.memo.tripped ? 'There are sirens, which is not ideal.' : 'No sirens yet.'} ${c.rng.pick(['The radio is playing Dean Martin, loudly, and nobody can find the knob.', 'Somebody’s left a pizza box on the back seat since Saturday.', 'The windscreen wipers are on for no reason and will not turn off.'])}`];
       },
-      target: (c) => bank(c).getaway + (c.memo.tripped ? 1 : 0),
+      target: (c) => bank(c).getaway + (c.memo.tripped ? 1 : 0) - (onPost(c, 'corner').length ? 1 : 0),
     }),
+
+    cut: cut({ time: '12:20 A.M.', place: 'The back of the car, under a streetlight on Canal Street' }),
 
     count: counting({ time: '12:40 A.M.' }),
   },
