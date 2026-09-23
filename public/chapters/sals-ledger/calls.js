@@ -16,6 +16,9 @@ export const CALLS = [
   { when: () => true, text: () => '“They give me one phone call a day and I use it on you. Remember that when you’re counting.”' },
   { when: () => true, text: () => '“There’s a guy in here says he fixed the Knicks in ’94. Everybody in here says they fixed the Knicks in ’94.”' },
   { when: () => true, text: () => '“Did Prout talk to you yet? Say nothing. Say it slowly. It drives him crazy.”' },
+  { when: () => true, text: () => '“Tell Ma the sauce in here is fine. She’ll know I’m lying and she’ll feel better.”' },
+  { when: () => true, text: () => '“Morty came to see me in a new tie clip. Gold. On my money. Tell him I noticed.”' },
+  { when: () => true, text: () => '“There’s a priest does confession in here Tuesdays. I went. He asked me not to come back.”' },
 ];
 
 function jailed(c) {
@@ -24,9 +27,11 @@ function jailed(c) {
 
 export function salCall(c) {
   const used = c.s.flags.callsUsed ?? [];
-  const specific = CALLS.map((x, i) => ({ ...x, i })).filter((x) => !used.includes(x.i) && x.when(c));
+  // only what's true this morning; if he's said all of it, he says something twice
+  const fits = CALLS.map((x, i) => ({ ...x, i })).filter((x) => x.when(c));
+  const specific = fits.filter((x) => !used.includes(x.i));
   const pool = specific.filter((x) => x.when.toString().length > 20 && !x.when.toString().includes('() => true'));
-  const pick = (pool.length && c.rng.chance(0.75) ? c.rng.pick(pool) : c.rng.pick(specific.length ? specific : CALLS.map((x, i) => ({ ...x, i }))));
+  const pick = (pool.length && c.rng.chance(0.75) ? c.rng.pick(pool) : c.rng.pick(specific.length ? specific : fits));
   c.s.flags.callsUsed = [...used, pick.i];
   return pick.text(c);
 }

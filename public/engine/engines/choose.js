@@ -23,6 +23,10 @@ function validAmount(spec, n) {
   return Math.abs((n - spec.min) / step - Math.round((n - spec.min) / step)) < 1e-9 || n === spec.max;
 }
 
+function usable(o) {
+  return !o.disabled && !(o.target && Array.isArray(o.targets) && !o.targets.length);
+}
+
 function defaultChoice(g, b, def, pid) {
   const c = g.ctx();
   const fromDef = def.fallback?.(c, pid);
@@ -42,9 +46,9 @@ export default {
 
   start(g, b, def) {
     const c = g.ctx();
-    const ids = (def.who?.(c) ?? g.free().map((p) => p.id)).filter((id) => g.hasPlayer(id));
+    const asked = (def.who?.(c) ?? g.free().map((p) => p.id)).filter((id) => g.hasPlayer(id));
     const opts = {};
-    for (const id of ids) {
+    for (const id of asked) {
       if (def.amount && !def.options) {
         const spec = def.amount(c, id);
         opts[id] = [{ id: 'amount', label: spec.label ?? 'Amount', amount: { min: spec.min ?? 0, max: Math.max(spec.min ?? 0, spec.max), step: spec.step ?? 5000 }, blurb: spec.blurb ?? null }];
@@ -55,6 +59,9 @@ export default {
         }));
       }
     }
+    // nobody waits on a person who has nothing they could pick — say, warning
+    // somebody else when everybody else is in lockup
+    const ids = asked.filter((id) => opts[id].some(usable));
     b.data = {
       who: ids, opts, choices: {}, reveal: def.reveal ?? 'secret', peeks: {},
       intro: def.intro ? Object.fromEntries(ids.map((id) => [id, def.intro(c, id)])) : {},

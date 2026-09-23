@@ -184,6 +184,8 @@ export default {
         `The band stops. Vinnie taps a glass. “And now,” he says, smiling at your table, “a few words from our friends the Benedettos.” There is a microphone. ${c.memo.bride} is looking right at you.`,
         'Pick who gives the toast. Everybody sees who picked who.',
       ],
+      // with every Benedetto inside, nobody is asked
+      when: (c) => c.free.some((p) => c.familyOf(p.id) !== 'c'),
       candidates: (c) => c.free.filter((p) => c.familyOf(p.id) !== 'c').map((p) => p.id),
       noSelf: false,
       resolve(c, { choice }) {
@@ -194,6 +196,7 @@ export default {
 
     toast: {
       engine: 'roll', time: '11:17 P.M.', place: 'The microphone', title: 'The Toast', kicker: 'THE DICE',
+      when: (c) => !!c.memo.toaster,
       text: (c) => [`${c.name(c.memo.toaster)} has the microphone and three hundred Castellanos looking at them. Somewhere a baby is crying. Somewhere else, Nonna has closed her eyes.`],
       target: (c) => 8 - (c.flag('castellanoRespect') ?? 0) + (c.flag('war') ? 1 : 0),
       roller: (c) => c.memo.toaster,

@@ -158,6 +158,8 @@ export default {
     };
     b.stage = 'vote';
     g.clockFor('vote');
+    // nothing on the ballot: nobody waits for a vote that can't be cast
+    if (!options.length) { b.data.voters = []; g.toFallout(); }
   },
 
   pending(g, b) {

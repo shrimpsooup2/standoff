@@ -13,8 +13,9 @@ export default {
     const target = def.target(c);
     const who = (def.who?.(c) ?? g.free().map((p) => p.id)).filter((id) => g.hasPlayer(id));
     const rollerId = def.roller?.(c) ?? null;
-    const roller = rollerId && g.hasPlayer(rollerId) && !g.isAway(g.getPlayer(rollerId)) ? rollerId
-      : who.find((id) => !g.getPlayer(id).bot) ?? who[0] ?? g.s.players[0]?.id;
+    const here = (id) => id && g.hasPlayer(id) && !g.isAway(g.getPlayer(id)) && g.inCurrentTrack(g.getPlayer(id));
+    // with nobody in the scene to throw them, the dice throw themselves
+    const roller = here(rollerId) ? rollerId : who.find((id) => here(id) && !g.getPlayer(id).bot) ?? who.find(here) ?? null;
     b.data = {
       target, who, roller, mods: def.mods?.(c) ?? [], dice: def.dice ?? 2,
       label: typeof def.label === 'function' ? def.label(c) : def.label ?? b.title,

@@ -3,6 +3,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { Game } from '../public/engine/game.js';
+import { salCall, CALLS } from '../public/chapters/sals-ledger/calls.js';
+import { autoAction } from './autoplay.js';
 
 function play({ n, length = 'full', seed, roundTrip = false }) {
   let g = new Game({ code: 'TEST', seed });
@@ -24,7 +26,30 @@ function play({ n, length = 'full', seed, roundTrip = false }) {
       g = again;
     }
   }
+  assert.deepEqual(g.s.faults ?? [], [], `no beat fell over (${seed})`);
   return { g, seen };
+}
+
+/** One person and the ghosts with the clock off, as on one device or solo. */
+function playClockOff({ n, length, seed, families = 'auto' }) {
+  const g = new Game({ code: 'SOLO', seed });
+  let t = 1_000_000;
+  g.clock = () => t;
+  g.setConfig({ clock: false, length, families });
+  g.addPlayer({ id: 'me', name: 'Andre' });
+  g.setConnected('me', true);
+  while (g.players.length < n) g.addBot();
+  assert.equal(g.start().ok, true);
+  let still = 0;
+  for (let steps = 0; g.phase === 'playing' && steps < 20000 && still < 300; steps++) {
+    const v = g.version;
+    const a = autoAction(g.view('me'));
+    if (a) g.act('me', a);
+    t += 700;
+    g.tick(t);
+    still = g.version === v ? still + 1 : 0;
+  }
+  return g;
 }
 
 for (const n of [2, 3, 4, 5, 6, 7, 8, 10]) {
@@ -41,6 +66,31 @@ for (const n of [2, 3, 4, 5, 6, 7, 8, 10]) {
     }
   });
 }
+
+test('with the clock off, nobody is left waiting on a choice they cannot make', () => {
+  // the first four once stalled: a warning with nobody else free to warn, a
+  // toast with every Benedetto inside, Sal running out of things to say, and
+  // a getaway handed to somebody across the river
+  const seeds = [['hunt-14', 4, 'short'], ['hunt-1054', 10, 'full'], ['hunt-2042', 4, 'full'], ['hunt-9177', 4, 'full', 'on']];
+  for (let r = 0; r < 24; r++) seeds.push([`off-${r}`, [2, 3, 4, 5, 7, 9][r % 6], r % 2 ? 'full' : 'short', r % 4 === 2 ? 'on' : 'auto']);
+  for (const [seed, n, length, families] of seeds) {
+    const g = playClockOff({ n, length, seed, families });
+    assert.equal(g.phase, 'over', `${seed} (${n}, ${length}) got to Monday`);
+    assert.deepEqual(g.s.faults ?? [], [], `no beat fell over (${seed})`);
+  }
+});
+
+test('Sal always has something true to say, even on the last morning', () => {
+  const g = new Game({ code: 'TEST', seed: 'calls' });
+  for (let i = 0; i < 4; i++) g.addBot();
+  g.start();
+  g.s.flags.callsUsed = CALLS.map((_, i) => i);
+  for (let i = 0; i < 20; i++) {
+    const line = salCall(g.ctx());
+    assert.equal(typeof line, 'string');
+    assert.ok(line.length > 10);
+  }
+});
 
 test('the short game is four nights', () => {
   for (let r = 0; r < 6; r++) {

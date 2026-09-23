@@ -10,7 +10,7 @@ export default {
     { if: (c) => c.memo.answer === 'hit', then: ['card-room', 'car'] },
     { if: (c) => c.memo.answer === 'pay', then: 'tribute' },
     { if: (c) => c.memo.answer === 'nonna', then: 'nonna-calls' },
-    { if: (c) => c.flag('war') && c.memo.answer !== 'pay', then: 'who-they-take' },
+    { if: (c) => c.flag('war') && c.memo.answer !== 'pay' && c.free.length >= 2, then: 'who-they-take' },
     'count',
   ],
   close(c) {

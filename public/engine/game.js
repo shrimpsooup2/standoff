@@ -488,7 +488,15 @@ export class Game {
       if (def.when && !def.when(this.ctx())) continue;
       // with everybody inside or lying low, only the story carries on
       if (!def.always && def.engine !== 'story' && !this.free().length) continue;
-      this.beginBeat(id, def);
+      try {
+        this.beginBeat(id, def);
+      } catch (err) {
+        // a beat that falls over is skipped, not allowed to stop the week
+        console.error(`[standoff] beat ${id} fell over:`, err);
+        (this.s.faults ??= []).push(id);
+        this.s.beat = null;
+        continue;
+      }
       if (this.s.beat) return true;
     }
     return false;
