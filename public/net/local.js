@@ -4,213 +4,163 @@
 // itself. That gives two offline modes and makes the game work on static
 // hosting (GitHub Pages), where there is nobody to keep a socket open:
 //
-//   ONE DEVICE — everybody plays on the same phone or laptop. Public phases
-//                are shown to the room; private ones hand the device around
-//                with a "pass to <name>" card in between so nobody reads
-//                anybody else's whisper.
+//   ONE DEVICE — everybody plays on the same phone or laptop. Anything the
+//                whole table may see is shown to the room. Anything private —
+//                a vote before it's counted, a clue, a choice in the Room —
+//                hands the device around, with a "pass to <name>" card in
+//                between so nobody reads anybody else's.
 //   SOLO       — you against the ghosts.
 
-import { Game } from '../game/engine.js';
-import { BOT_NAMES, STRATEGIES } from '../game/bots.js';
-import { makeRng } from '../game/rng.js';
+import { Game } from '../engine/game.js';
 
-const PRIVATE_PHASES = new Set(['talk', 'squeeze', 'vote', 'accusation']);
-
+const TICK_MS = 250;
 let seq = 0;
-const nextId = () => `local-${++seq}`;
+const nextId = () => `local-${Date.now().toString(36)}-${++seq}`;
 
 export class LocalTable {
-  constructor({ mode = 'device', onState }) {
+  constructor({ mode = 'device', chapter, onState }) {
     this.mode = mode;                 // 'device' | 'solo'
+    this.chapter = chapter;
     this.onState = onState;
-    this.rng = makeRng(String(Date.now()) + Math.random());
-    this.game = new Game({ code: mode === 'solo' ? 'SOLO' : 'TABLE', config: { timers: false } });
-    this.seatIndex = 0;
-    this.passing = false;
-    this.lastPhase = null;
+    this.game = this.fresh();
+    this.revealed = null;             // the seat that has taken the device
+    this.peek = null;                 // somebody looking at their own dossier
+    this.windowSeat = null;           // somebody who has something for the dice
+    this.lastVersion = -1;
+    this.timer = setInterval(() => this.tick(), TICK_MS);
   }
 
-  get humans() {
-    return this.game.livePlayers.filter((p) => !p.bot);
+  fresh() {
+    const g = new Game({ code: this.mode === 'solo' ? 'SOLO' : 'TABLE', chapter: this.chapter, seed: `${Date.now()}-${Math.random()}` });
+    // nobody is racing a clock at a kitchen table
+    g.setConfig({ clock: false });
+    return g;
   }
 
-  get seat() {
-    return this.humans[this.seatIndex] ?? null;
+  close() { clearInterval(this.timer); }
+
+  get humans() { return this.game.players.filter((p) => !p.bot); }
+
+  tick() {
+    const g = this.game;
+    if (g.phase !== 'playing') return;
+    g.tick(Date.now());
+    if (g.version !== this.lastVersion) this.emit();
   }
 
-  get isPrivate() {
-    return PRIVATE_PHASES.has(this.game.phase);
-  }
-
-  /** Solo play never needs a hand-off card; there is only one pair of eyes. */
-  get needsPassing() {
-    return this.mode === 'device' && this.humans.length > 1;
+  /** Who the device belongs to right now, and whether it has to be passed first. */
+  seat() {
+    const g = this.game;
+    if (this.mode === 'solo') return { stage: 'private', id: this.humans[0]?.id ?? null };
+    if (g.phase !== 'playing') return { stage: 'public', id: null };
+    if (this.peek && g.hasPlayer(this.peek)) return { stage: this.revealed === this.peek ? 'private' : 'pass', id: this.peek, peek: true };
+    const b = g.s.beat;
+    if (b?.window) {
+      const able = g.windowPending(b.window);
+      if (this.windowSeat && able.includes(this.windowSeat)) return { stage: this.revealed === this.windowSeat ? 'private' : 'pass', id: this.windowSeat, window: true };
+      this.windowSeat = null;
+      return { stage: 'window', id: null, able };
+    }
+    if (b?.stage === 'fallout') return { stage: 'public', id: null, fallout: true };
+    const waiting = g.awaiting();
+    const priv = waiting.find((w) => w.private);
+    if (priv) return { stage: this.revealed === priv.id ? 'private' : 'pass', id: priv.id };
+    if (waiting.length) return { stage: 'shared', id: waiting[0].id };
+    return { stage: 'public', id: null };
   }
 
   emit() {
     const g = this.game;
-    const seatId = this.isPrivate && !this.passing ? this.seat?.id ?? null : null;
-    const soloId = this.mode === 'solo' ? this.humans[0]?.id ?? null : null;
-    const viewer = this.mode === 'solo' ? soloId : seatId;
+    this.lastVersion = g.version;
+    const seat = this.seat();
+    const viewer = seat.stage === 'private' || seat.stage === 'shared' ? seat.id : null;
     const state = g.view(viewer ?? undefined);
-
     state.isHost = true;
     state.local = {
       mode: this.mode,
-      passing: this.isPrivate && this.passing && this.needsPassing,
-      seatName: this.seat?.name ?? null,
-      seatIndex: this.seatIndex,
-      seatCount: this.humans.length,
-      roster: this.game.livePlayers.map((p) => ({ id: p.id, name: p.name, bot: p.bot })),
+      stage: seat.stage,
+      seat: seat.id ? { id: seat.id, name: g.name(seat.id) } : null,
+      peek: !!seat.peek,
+      window: !!seat.window,
+      able: (seat.able ?? []).map((id) => ({ id, name: g.name(id) })),
+      fallout: !!seat.fallout,
+      humans: this.humans.map((p) => ({ id: p.id, name: p.name })),
     };
     state.chat = [];
-    state.maxPlayers = 10;
-
-    // On a shared screen the job briefing belongs to the room: there is no
-    // "you" between turns, so hand over every job at once and let each pair
-    // read their own off the table.
-    if ((g.phase === 'deal' || g.phase === 'act') && !viewer && g.groups.length) {
-      state.briefing = g.groups.map((grp) => {
-        const any = grp.memberIds[0];
-        const seen = g.view(any);
-        const names = grp.memberIds.map((id) => g.players.get(id)?.name ?? '?');
-        // nobody is "you" on a shared screen, so the dossier names the room
-        return { id: grp.id, names, job: { ...seen.job, sharedNames: names } };
-      });
-    }
-
-    // The reckoning belongs to the room too, so hand over the per-player
-    // breakdown that an online player would only see for themselves.
-    if (g.phase === 'reckoning' && state.reckoning) {
-      for (const row of state.reckoning) {
-        const grp = g.groups.find((x) => x.id === row.id);
-        if (!grp) continue;
-        row.allLines = grp.memberIds.map((pid) => ({
-          name: g.players.get(pid)?.name ?? '?',
-          lines: grp.result?.perPlayer[pid]?.lines ?? [],
-        }));
-      }
-    }
     this.onState(state);
   }
 
-  /** Entering a private phase starts the hand-around from the top. */
-  syncSeats() {
-    if (this.game.phase !== this.lastPhase) {
-      this.lastPhase = this.game.phase;
-      this.seatIndex = 0;
-      this.passing = this.isPrivate && this.needsPassing;
-    }
-  }
-
-  advanceSeat() {
-    if (this.seatIndex + 1 < this.humans.length) {
-      this.seatIndex += 1;
-      this.passing = this.needsPassing;
-    } else {
-      this.seatIndex = 0;
-      this.passing = false;
-      this.game.advancePhase();
-      this.syncSeats();
-    }
-  }
-
-  addBot() {
-    const used = new Set(this.game.livePlayers.map((p) => p.name));
-    const name = BOT_NAMES.find((n) => !used.has(n)) ?? `Ghost ${this.game.players.size + 1}`;
-    this.game.addPlayer({
-      id: nextId(), name, bot: true, strategy: this.rng.pick(STRATEGIES).id,
-    });
+  /** Who a move from the device is on behalf of. */
+  actor(msg) {
+    const seat = this.seat();
+    if (this.mode === 'solo') return this.humans[0]?.id ?? null;
+    if (seat.stage === 'private' || seat.stage === 'shared') return seat.id;
+    return msg.as && this.game.hasPlayer(msg.as) ? msg.as : null;
   }
 
   send(msg) {
     const g = this.game;
-    const seat = this.mode === 'solo' ? this.humans[0] : this.seat;
-    const pid = seat?.id;
-
+    this.error = null;
+    const report = (res) => { if (res?.error) this.error = res.error; };
     switch (msg.t) {
       case 'addLocal': {
-        if (g.phase !== 'lobby') break;
-        if (g.players.size >= 10) break;
-        g.addPlayer({ id: nextId(), name: msg.name });
+        const name = String(msg.name ?? '').slice(0, 18).trim();
+        if (!name) { this.error = 'Everybody needs a name.'; break; }
+        if (g.players.some((p) => p.name.toLowerCase() === name.toLowerCase())) { this.error = 'Somebody already has that name.'; break; }
+        const p = g.addPlayer({ id: nextId(), name });
+        if (!p) this.error = 'The room only holds ten.';
+        else g.setConnected(p.id, true);
         break;
       }
-      case 'removeLocal': {
-        if (g.phase !== 'lobby') break;
-        g.removePlayer(msg.id);
-        break;
-      }
-      case 'addBot': this.addBot(); break;
-      case 'removeBot': g.removePlayer(msg.id); break;
-      case 'config': g.setConfig(msg); break;
+      case 'removeLocal': g.removePlayer(msg.id); break;
+      case 'addBot': report(g.addBot()); break;
+      case 'removeBot': { const p = g.getPlayer(msg.id); if (p?.bot) g.removePlayer(p.id); break; }
+      case 'config': report(g.setConfig(msg)); break;
       case 'start': {
-        if (this.mode === 'solo') while (g.players.size < 4) this.addBot();
-        const res = g.start();
-        if (res?.error) { this.error = res.error; break; }
-        this.lastPhase = null;
-        this.syncSeats();
+        if (this.mode === 'solo') while (g.players.length < 4) g.addBot();
+        report(g.start());
+        g.settle(3);
         break;
       }
-      case 'tutorial': {
-        if (this.mode === 'solo') while (g.players.size < 4) this.addBot();
-        const res = g.startTutorial();
-        if (res?.error) { this.error = res.error; break; }
-        this.lastPhase = null;
-        this.syncSeats();
+      case 'skip': report(g.skip()); break;
+      case 'take': this.revealed = this.seat().id; break;
+      case 'peek': if (g.hasPlayer(msg.id)) { this.peek = msg.id; this.revealed = null; } break;
+      case 'peekDone': this.peek = null; this.revealed = null; break;
+      case 'windowSeat': if (g.hasPlayer(msg.id)) { this.windowSeat = msg.id; this.revealed = null; } break;
+      case 'windowDone': this.windowSeat = null; this.revealed = null; break;
+      case 'letItStand': {
+        // everybody at the table passes on the dice at once
+        for (const p of this.humans) g.passWindow(p.id);
+        g.pump();
         break;
       }
-      case 'seatTake': this.passing = false; break;
-      case 'seatDone': this.advanceSeat(); break;
-      case 'skip': {
-        if (g.phase === 'lobby' || g.phase === 'ledger') break;
-        g.advancePhase();
-        this.syncSeats();
+      case 'nextAll': {
+        for (const p of this.humans) g.act(p.id, { t: 'next' });
         break;
       }
-      case 'whisper': if (pid) g.whisper(pid, msg.text); break;
-      case 'pledge': if (pid) g.pledge(pid, msg.value); break;
-      case 'card': if (pid) { const r = g.playCard(pid, msg.card, msg.target ?? null); if (r?.error) this.error = r.error; } break;
-      case 'marker': if (pid) { const r = g.callMarker(pid); if (r?.error) this.error = r.error; } break;
-      case 'power': if (pid) g.usePower(pid, msg.target); break;
-      case 'choose': {
-        if (!pid) break;
-        g.choose(pid, msg.choice);
-        // in solo the ghosts have already moved, so the round may be over
-        if (g.phase === 'squeeze') this.advanceSeat();
-        else this.syncSeats();
-        break;
-      }
-      case 'ready': {
-        g.advancePhase();
-        this.syncSeats();
-        break;
-      }
-      case 'vote': {
-        if (!pid) break;
-        g.castVote(pid, msg.target);
-        if (g.phase === 'vote') this.advanceSeat();
-        else this.syncSeats();
-        break;
-      }
-      case 'accuse': {
-        if (!pid) break;
-        g.accuse(pid, msg.target);
-        if (g.phase === 'accusation') this.advanceSeat();
-        else this.syncSeats();
+      case 'act': {
+        const pid = this.actor(msg);
+        if (!pid) { this.error = 'Whose move is that?'; break; }
+        const res = g.act(pid, msg.a ?? {}, { isHost: true });
+        report(res);
+        // whoever had the device is done once they're no longer waited on
+        if (this.windowSeat && !g.s.beat?.window) this.windowSeat = null;
         break;
       }
       case 'rematch': {
-        if (g.phase !== 'ledger') break;
-        this.game = g.rematch();
-        this.lastPhase = null;
-        this.seatIndex = 0;
-        this.passing = false;
+        if (g.phase !== 'over') break;
+        const next = g.rematch();
+        next.setConfig({ clock: false });
+        for (const p of next.players) if (!p.bot) next.setConnected(p.id, true);
+        this.game = next;
+        this.revealed = null; this.peek = null; this.windowSeat = null;
         break;
       }
       default: break;
     }
-
-    this.syncSeats();
+    // the device moves on as soon as its holder has nothing left to do
+    const seat = this.seat();
+    if (this.revealed && seat.id !== this.revealed) this.revealed = null;
     this.emit();
   }
 }

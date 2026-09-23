@@ -135,21 +135,26 @@ test('a night survives the host being restarted mid-round', async (t) => {
   b.send({ t: 'join', code, name: 'Mo' });
   await b.until((x) => x.welcome, 'welcome');
 
-  a.send({ t: 'config', rounds: 4, timers: false });
+  a.send({ t: 'config', clock: false });
   a.send({ t: 'start' });
-  await a.until((x) => x.state?.phase === 'act', 'the night to begin');
-  a.send({ t: 'skip' });
-  await a.until((x) => x.state?.phase === 'deal', 'a job');
+  await a.until((x) => x.state?.phase === 'playing' && x.state.beat, 'the week to begin');
+  // get past the prologue into the first night
+  for (let i = 0; i < 20 && a.state.scene?.nightId === 'prologue'; i++) {
+    a.send({ t: 'act', a: { t: 'next' } });
+    b.send({ t: 'act', a: { t: 'next' } });
+    await sleep(120);
+  }
 
   const before = {
-    round: a.state.round,
-    title: a.state.job.title,
-    moves: a.state.job.options.map((o) => o.label).join('|'),
-    card: a.state.you.role.id,
-    hand: a.state.you.hand.map((c) => c.id).join('|'),
+    beat: a.state.beat.id,
+    scene: a.state.scene.title,
+    job: a.state.you.job.id,
+    secret: a.state.you.secret.name,
+    hand: a.state.you.cards.map((c) => c.id).join('|'),
   };
   const tokenA = a.welcome.token;
   const tokenB = b.welcome.token;
+  await sleep(500);   // let the debounced save land
 
   // the lid closes
   a.close(); b.close();
@@ -159,17 +164,17 @@ test('a night survives the host being restarted mid-round', async (t) => {
   await host.start();
   const a2 = await new Client('Andre again', port).open();
   a2.send({ t: 'resume', code, token: tokenA });
-  await a2.until((x) => x.state?.job, 'their seat back', 8000);
+  await a2.until((x) => x.state?.you?.job, 'their seat back', 8000);
 
-  assert.equal(a2.state.round, before.round, 'the same round');
-  assert.equal(a2.state.job.title, before.title, 'the same job');
-  assert.equal(a2.state.job.options.map((o) => o.label).join('|'), before.moves, 'the same moves');
-  assert.equal(a2.state.you.role.id, before.card, 'the same secret card');
-  assert.equal(a2.state.you.hand.map((c) => c.id).join('|'), before.hand, 'the same hand');
+  assert.equal(a2.state.beat.id, before.beat, 'the same beat');
+  assert.equal(a2.state.scene.title, before.scene, 'the same night');
+  assert.equal(a2.state.you.job.id, before.job, 'the same job');
+  assert.equal(a2.state.you.secret.name, before.secret, 'the same secret');
+  assert.equal(a2.state.you.cards.map((c) => c.id).join('|'), before.hand, 'the same hand');
 
   const b2 = await new Client('Mo again', port).open();
   b2.send({ t: 'resume', code, token: tokenB });
-  await b2.until((x) => x.state?.job, 'their seat back');
+  await b2.until((x) => x.state?.you?.job, 'their seat back');
   assert.equal(b2.state.you.name, 'Mo');
 
   a2.close(); b2.close();
@@ -188,10 +193,10 @@ test('a night survives the power being pulled, losing at most a moment', async (
   const code = a.welcome.code;
   const token = a.welcome.token;
   a.send({ t: 'addBot' });
-  a.send({ t: 'config', rounds: 4, timers: false });
+  a.send({ t: 'config', clock: false });
   await a.until((x) => x.state?.players.length === 2, 'a ghost to sit down');
   a.send({ t: 'start' });
-  await a.until((x) => x.state?.phase === 'act', 'the night to begin');
+  await a.until((x) => x.state?.phase === 'playing', 'the week to begin');
   await sleep(500);   // let the debounced save land
 
   a.close();
@@ -201,7 +206,7 @@ test('a night survives the power being pulled, losing at most a moment', async (
   const again = await new Client('Andre again', port).open();
   again.send({ t: 'resume', code, token });
   await again.until((x) => x.state?.you, 'their seat back', 8000);
-  assert.ok(['act', 'deal'].includes(again.state.phase), `expected to be mid-night, got ${again.state.phase}`);
+  assert.equal(again.state.phase, 'playing', `expected to be mid-week, got ${again.state.phase}`);
   assert.equal(again.state.players.length, 2, 'the ghost is still there');
   again.close();
 });
@@ -238,9 +243,9 @@ test('the table keeps running when the host walks out', async (t) => {
   assert.ok(newHost.state.isHost, 'the table has a host again');
 
   // and the new host can actually run it
-  newHost.send({ t: 'config', rounds: 4, timers: false });
+  newHost.send({ t: 'config', clock: false });
   newHost.send({ t: 'start' });
-  await newHost.until((x) => x.state.phase === 'act', 'the new host can deal');
+  await newHost.until((x) => x.state.phase === 'playing', 'the new host can deal');
   b.close(); c.close();
 });
 
@@ -271,8 +276,33 @@ test('nothing a client can send takes the host down', async (t) => {
     JSON.stringify({ t: '__proto__' }),
     JSON.stringify({ t: 'constructor' }),
     JSON.stringify({ t: 'start', extra: 'x'.repeat(1000) }),
+    JSON.stringify({ t: 'act' }),
+    JSON.stringify({ t: 'act', a: null }),
+    JSON.stringify({ t: 'act', a: 'vote' }),
+    JSON.stringify({ t: 'act', a: { t: '__proto__' } }),
+    JSON.stringify({ t: 'act', a: { t: 'constructor' } }),
+    JSON.stringify({ t: 'config', length: { x: 1 }, clock: 'yes', pace: 'ludicrous' }),
   ];
   for (const bad of nonsense) a.raw(bad);
+
+  // and the same again once a week is actually running
+  a.send({ t: 'addBot' });
+  a.send({ t: 'config', clock: false });
+  await a.until((x) => x.state?.players.length === 2, 'a ghost');
+  a.send({ t: 'start' });
+  await a.until((x) => x.state?.phase === 'playing', 'the week');
+  const inPlay = [
+    { t: 'vote', option: { nested: true } }, { t: 'vote', option: '__proto__' },
+    { t: 'choose', option: 'x', amount: Number.NaN, target: { a: 1 } },
+    { t: 'card', uid: '../../etc/passwd', target: null }, { t: 'card', uid: { x: 1 } },
+    { t: 'offer', kind: 'iou', pct: 1e9, to: 'nobody' }, { t: 'offer', kind: 'oath', to: { x: 1 } },
+    { t: 'respond', id: null, accept: 'maybe' }, { t: 'grab', move: 'everything' },
+    { t: 'report', amount: -5 }, { t: 'report', amount: 1e12 }, { t: 'jail', what: 'escape' },
+    { t: 'wire' }, { t: 'wipe', word: 'toString' }, { t: 'sell', uid: 'hasOwnProperty' },
+    { t: 'note', mode: 'flip' }, { t: 'open', opening: null }, { t: 'pick', item: '__proto__' },
+    { t: 'fix', target: 'x', option: 'y' }, { t: 'grudge', target: 'constructor', use: 'heat' },
+  ];
+  for (const bad of inPlay) a.raw(JSON.stringify({ t: 'act', a: bad }));
 
   // deeply nested object, the classic parser killer
   let deep = { t: 'chat', text: 'x' };
@@ -284,7 +314,8 @@ test('nothing a client can send takes the host down', async (t) => {
   assert.equal(health.status, 200, 'the host is still serving');
   assert.equal((await health.json()).ok, true);
 
-  // and it still works normally afterwards
+  // and it still works normally afterwards, once the rate limit has let go
+  await sleep(2200);
   a.send({ t: 'ping' });
   await a.until((x) => x.pong, 'a pong');
   a.close();

@@ -23,7 +23,7 @@ function who(g, b) {
 
 export default {
   kicker: 'EVERYTHING’S NEGOTIABLE',
-  private: () => false,
+  private: () => true,
 
   start(g, b, def) {
     const c = g.ctx();

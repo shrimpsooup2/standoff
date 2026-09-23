@@ -6,6 +6,7 @@ import { fileURLToPath } from 'node:url';
 import fs from 'node:fs/promises';
 
 import net from 'node:net';
+import { autoAction } from './autoplay.js';
 
 const root = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 
@@ -106,7 +107,21 @@ test('the page and its assets are served', async () => {
   }
 });
 
-test('three friends play a whole night through real sockets', async () => {
+/** Everybody does whatever their own screen asks of them until Monday. */
+async function playOut(clients, ms = 90000) {
+  const end = Date.now() + ms;
+  while (Date.now() < end) {
+    if (clients.every((c) => c.state?.phase === 'over')) return;
+    for (const c of clients) {
+      const a = autoAction(c.state);
+      if (a) c.send({ t: 'act', a });
+    }
+    await new Promise((r) => setTimeout(r, 60));
+  }
+  throw new Error(`the week never ended (stuck at ${clients[0].state?.beat?.id} ${clients[0].state?.beat?.stage})`);
+}
+
+test('three friends play a whole week through real sockets', async () => {
   const [host, b, c] = await Promise.all([
     new Client('Andre').open(), new Client('Mo').open(), new Client('Kit').open(),
   ]);
@@ -120,98 +135,43 @@ test('three friends play a whole night through real sockets', async () => {
   c.send({ t: 'join', code, name: 'Kit' });
   await Promise.all([b.until((x) => x.welcome), c.until((x) => x.welcome)]);
   await host.until((x) => x.state?.players.length === 3, 'three at the table');
-
   assert.equal(host.state.isHost, true);
   assert.equal(b.state.isHost, false);
+  assert.equal(host.state.chapter.number, 1, 'Chapter 1 is on the table');
 
   // only the host can deal
   b.send({ t: 'start' });
   await b.until((x) => x.errors.length > 0, 'a refusal');
   assert.match(b.errors[0], /host/i);
 
-  host.send({ t: 'config', rounds: 3, timers: false });
-  await host.until((x) => x.state.config.rounds === 3 && x.state.config.timers === false, 'settings');
+  host.send({ t: 'config', length: 'short', clock: false });
+  await host.until((x) => x.state.config.length === 'short' && x.state.config.clock === false, 'settings');
 
   host.send({ t: 'start' });
   const all = [host, b, c];
-  await Promise.all(all.map((x) => x.phase('act')));
-  assert.ok(host.state.act.title, 'the night opens on an act card');
-  await host.skipTo('deal');
-  await Promise.all(all.map((x) => x.phase('deal')));
-  for (const x of all) assert.ok(x.state.you.role, 'everybody gets a card');
+  await Promise.all(all.map((x) => x.until((y) => y.state?.phase === 'playing', 'the week to begin')));
   for (const x of all) {
-    for (const p of x.state.players) assert.equal(p.role, undefined, 'cards stay face down');
+    assert.ok(x.state.you.job, 'everybody gets a job');
+    assert.ok(x.state.you.secret, 'and a secret');
+    assert.equal(x.state.you.cards.length, 2, 'and two cards');
+    for (const p of x.state.players) if (!p.isYou) assert.equal(p.cash, null, 'nobody sees anybody else’s cash');
   }
-
-  for (let round = 1; round <= 3; round++) {
-    await host.skipTo('deal');
-    await Promise.all(all.map((x) => x.phase('deal')));
-    assert.equal(host.state.round, round);
-    for (const x of all) assert.ok(x.state.job.setup.length > 0, 'everybody gets a job');
-
-    host.send({ t: 'skip' });
-    const talked = host.state.twist.id !== 'notalk';
-    if (talked) {
-      await Promise.all(all.map((x) => x.phase('talk')));
-      b.send({ t: 'whisper', text: 'We are solid. You know we are solid.' });
-      b.send({ t: 'pledge', value: true });
-      await b.until((x) => x.state.job.pledgedByYou, 'the pledge registers');
-      host.send({ t: 'skip' });
-    }
-
-    await Promise.all(all.map((x) => x.phase('squeeze')));
-    // every job offers its own moves; the first is always the loyal one and the
-    // last is always the worst one, whatever this particular room calls them
-    const loyal = (x) => x.state.job.options[0].id;
-    const worst = (x) => x.state.job.options[x.state.job.options.length - 1].id;
-    assert.ok(host.state.job.options.length >= 2, 'a job should offer something to choose between');
-    host.send({ t: 'choose', choice: loyal(host) });
-    b.send({ t: 'choose', choice: round === 2 ? worst(b) : loyal(b) });
-    c.send({ t: 'choose', choice: worst(c) });
-
-    await Promise.all(all.map((x) => x.phase('reckoning')));
-    for (const x of all) {
-      const mine = x.state.reckoning.find((g) => g.yours);
-      assert.ok(mine, `${x.name} should see their own job`);
-      assert.ok(mine.narration.length > 30, 'the reckoning is narrated');
-    }
-    for (const x of all) x.send({ t: 'ready' });
-    if (round < 3) {
-      await host.until((y) => y.state.phase !== 'reckoning', 'the round to turn over');
-      // an event or a new act may sit between jobs
-      for (let i = 0; i < 8 && host.state.phase !== 'deal'; i++) {
-        const was = host.state.phase;
-        if (was === 'vote') {
-          for (const x of all) x.send({ t: 'vote', target: x.state.players.find((p) => !p.isYou).id });
-        } else {
-          host.send({ t: 'skip' });
-        }
-        try { await host.until((x) => x.state.phase !== was, `${was} to move on`, 1500); } catch { /* try again */ }
-      }
-      await Promise.all(all.map((x) => x.until((y) => y.state.round === round + 1, 'next round')));
-    }
-  }
-
-  // nudge forward one phase at a time, waiting for each move to land, so a
-  // skip can never overshoot the phase we are trying to reach
-  for (let i = 0; i < 8 && host.state.phase !== 'accusation'; i++) {
-    const was = host.state.phase;
-    host.send({ t: 'skip' });
-    try { await host.until((x) => x.state.phase !== was, `${was} to move on`, 1500); } catch { /* try again */ }
-  }
-  await Promise.all(all.map((x) => x.phase('accusation')));
+  const secrets = all.map((x) => x.state.you.secret.name);
   for (const x of all) {
-    const target = x.state.players.find((p) => !p.isYou);
-    x.send({ t: 'accuse', target: target.id });
+    const seen = JSON.stringify(x.state.players);
+    for (const other of secrets) if (other !== x.state.you.secret.name) assert.ok(!seen.includes(other), 'secrets stay secret');
   }
 
-  await Promise.all(all.map((x) => x.phase('ledger')));
-  const L = host.state.ledger;
-  assert.equal(L.standings.length, 3);
-  assert.ok(L.rat, 'the rat is named at the end');
-  assert.ok(L.bonds.length >= 1, 'bonds are drawn');
-  for (const s of L.standings) assert.ok(s.role, 'every card turns over');
-  assert.equal(L.history.length, 3);
+  await playOut(all);
+  const E = host.state.end;
+  assert.equal(E.table.length, 3);
+  assert.equal(typeof E.salWalks, 'boolean');
+  for (const r of E.table) {
+    assert.ok(r.epilogue.length > 20, 'everybody gets an epilogue');
+    assert.ok(r.secret, 'every secret turns over');
+  }
+  assert.ok(E.verdict?.dice?.length === 2, 'the verdict was rolled');
+  assert.ok(E.story.length >= 3, 'the Courier kept the week');
 
   all.forEach((x) => x.close());
 });
@@ -227,9 +187,10 @@ test('a dropped player can walk back in with their token', async () => {
   await friend.until((x) => x.welcome);
   const token = friend.welcome.token;
 
-  host.send({ t: 'config', rounds: 3, timers: false });
+  host.send({ t: 'config', clock: false });
   host.send({ t: 'start' });
-  await host.skipTo('deal');
+  await friend.until((x) => x.state?.phase === 'playing', 'the week');
+  const job = friend.state.you.job.id;
 
   friend.close();
   await new Promise((r) => setTimeout(r, 200));
@@ -238,7 +199,7 @@ test('a dropped player can walk back in with their token', async () => {
   again.send({ t: 'resume', code, token });
   await again.until((x) => x.state?.you, 'their seat back');
   assert.equal(again.state.you.name, 'Friend');
-  assert.ok(again.state.job, 'and the job they walked out on');
+  assert.equal(again.state.you.job.id, job, 'and the job they walked out on');
 
   host.close(); again.close();
 });
@@ -253,7 +214,7 @@ test('the door is closed once the cards are dealt', async () => {
   await pal.until((x) => x.welcome);
 
   host.send({ t: 'start' });
-  await host.skipTo('deal');
+  await host.until((x) => x.state?.phase === 'playing', 'the week');
 
   const latecomer = await new Client('Late').open();
   latecomer.send({ t: 'join', code, name: 'Late' });

@@ -7,9 +7,9 @@
 // websocket. That is why there is no Node in here — `crypto` is the Web Crypto
 // API, which Node has had for years, and a "socket" is anything with a send().
 
-import { Game, serializeGame, deserializeGame } from '../game/engine.js';
-import { BOT_NAMES, STRATEGIES } from '../game/bots.js';
-import { makeRng, roomCode } from '../game/rng.js';
+import { Game } from '../engine/game.js';
+import { STYLES } from '../engine/bots.js';
+import { makeRng, roomCode } from '../engine/rng.js';
 
 const randomUUID = () => crypto.randomUUID();
 const randomBytes = (n) => ({
@@ -30,16 +30,15 @@ const RATE_LIMIT = 40;
 
 const KNOWN = new Set([
   'create', 'join', 'resume', 'config', 'addBot', 'removeBot', 'start', 'skip',
-  'whisper', 'pledge', 'card', 'marker', 'power', 'choose', 'ready', 'vote',
-  'accuse', 'chat', 'rematch', 'tutorial', 'ping', 'kick',
+  'act', 'chat', 'rematch', 'ping', 'kick',
 ]);
 
 const str = (v, max) => String(v ?? '').slice(0, max);
 
 export class Room {
-  constructor(code) {
+  constructor(code, { chapter } = {}) {
     this.code = code;
-    this.game = new Game({ code });
+    this.game = new Game({ code, chapter, seed: `${code}-${randomUUID()}` });
     this.sockets = new Map();   // playerId -> Set<Socket>
     this.tokens = new Map();    // token -> playerId
     this.leftLobbyAt = new Map(); // playerId -> when their socket went, in the lobby
@@ -57,7 +56,7 @@ export class Room {
   toJSON() {
     return {
       code: this.code,
-      game: serializeGame(this.game),
+      game: this.game.toJSON(),
       tokens: [...this.tokens.entries()],
       hostId: this.hostId,
       chat: this.chat.slice(-MAX_CHAT),
@@ -67,7 +66,7 @@ export class Room {
 
   static fromJSON(data) {
     if (!data?.code) return null;
-    const game = deserializeGame(data.game);
+    const game = Game.fromJSON(data.game);
     if (!game) return null;
     const room = new Room(data.code);
     room.game = game;
@@ -81,10 +80,10 @@ export class Room {
 
   // ------------------------------------------------------------- seats ---
 
-  get playerCount() { return this.game.players.size; }
+  get playerCount() { return this.game.players.length; }
 
   get connectedHumans() {
-    return this.game.livePlayers.filter((p) => !p.bot && p.connected).length;
+    return this.game.players.filter((p) => !p.bot && p.connected).length;
   }
 
   attach(playerId, socket) {
@@ -119,11 +118,11 @@ export class Room {
    * immediately and the table keeps moving.
    */
   reassignHost() {
-    const next = this.game.livePlayers.find((p) => !p.bot && p.connected);
+    const next = this.game.players.find((p) => !p.bot && p.connected);
     const previous = this.hostId;
     this.hostId = next?.id ?? null;
     if (this.hostId && this.hostId !== previous) {
-      this.say('THE HOUSE', `${this.game.players.get(this.hostId).name} is running the table now.`, 'system');
+      this.say('THE HOUSE', `${this.game.name(this.hostId)} is running the table now.`, 'system');
     }
   }
 
@@ -135,7 +134,7 @@ export class Room {
       if (this.sockets.has(playerId)) { this.leftLobbyAt.delete(playerId); continue; }
       if (now - at < LOBBY_GRACE_MS) continue;
       this.leftLobbyAt.delete(playerId);
-      if (!this.game.players.has(playerId)) continue;
+      if (!this.game.hasPlayer(playerId)) continue;
       this.game.removePlayer(playerId);
       for (const [tok, pid] of this.tokens) if (pid === playerId) this.tokens.delete(tok);
       if (this.hostId === playerId) this.reassignHost();
@@ -158,19 +157,15 @@ export class Room {
   }
 
   addBot() {
-    if (this.playerCount >= MAX_PLAYERS) return { error: 'The room only holds ten.' };
-    if (this.game.phase !== 'lobby') return { error: 'Too late to bring anybody in.' };
-    const rng = makeRng(randomUUID());
-    const used = new Set(this.game.livePlayers.map((p) => p.name));
-    const name = BOT_NAMES.find((n) => !used.has(n)) ?? `Ghost ${this.playerCount + 1}`;
-    const strategy = rng.pick(STRATEGIES).id;
-    const p = this.game.addPlayer({ id: randomUUID(), name, bot: true, strategy });
-    this.say('THE DOOR', `${p.name} let himself in. Word is he ${STRATEGIES.find((s) => s.id === strategy).name}.`, 'system');
+    const res = this.game.addBot();
+    if (res.error) return res;
+    const style = STYLES[res.player.style];
+    this.say('THE DOOR', `${res.player.name} let themselves in. Word is they’re ${style?.name ?? 'trouble'}: ${style?.blurb ?? 'nobody knows'}.`, 'system');
     return { ok: true };
   }
 
   removeBot(id) {
-    const p = this.game.players.get(id);
+    const p = this.game.getPlayer(id);
     if (!p || !p.bot) return { error: 'That one’s a real person.' };
     if (this.game.phase !== 'lobby') return { error: 'Nobody leaves mid-job.' };
     this.game.removePlayer(id);
@@ -178,16 +173,16 @@ export class Room {
     return { ok: true };
   }
 
-  /** The host can clear out somebody who has gone for good and is holding up a round. */
+  /** The host can clear out somebody who has gone for good and is holding up a beat. */
   kick(id) {
-    const p = this.game.players.get(id);
+    const p = this.game.getPlayer(id);
     if (!p) return { error: 'Nobody by that name.' };
     if (p.connected && !p.bot) return { error: 'They are still here. Ask them.' };
     if (this.game.phase === 'lobby') this.game.removePlayer(id);
     else {
-      // mid-game they become a ghost so the round can finish without them
+      // mid-game they become a ghost so the week can finish without them
       p.bot = true;
-      p.strategy = p.strategy ?? 'titfortat';
+      p.style = p.style ?? 'loyal';
       this.game.bump();
     }
     this.say('THE HOUSE', `${p.name} is not coming back. Somebody else will play their hand.`, 'system');
@@ -266,12 +261,12 @@ export class Rooms {
     this.store.save(() => this.snapshot(), { immediate });
   }
 
-  create() {
+  create({ chapter } = {}) {
     if (this.rooms.size >= MAX_ROOMS) this.evictOldest();
     let code = roomCode(this.rng);
     let guard = 0;
     while (this.rooms.has(code) && guard++ < 200) code = roomCode(this.rng);
-    const room = new Room(code);
+    const room = new Room(code, { chapter });
     this.rooms.set(code, room);
     return room;
   }
@@ -336,7 +331,7 @@ export function handleMessage(rooms, socket, raw) {
 
   // ---- entry --------------------------------------------------------------
   if (msg.t === 'create' || msg.t === 'join' || msg.t === 'resume') {
-    const room = msg.t === 'create' ? rooms.create() : rooms.get(msg.code);
+    const room = msg.t === 'create' ? rooms.create({ chapter: str(msg.chapter, 40) || undefined }) : rooms.get(msg.code);
     if (!room) return fail('No table by that name. Check the letters.');
 
     // A resume is a claim on a seat, not a request for one. If the token has
@@ -348,8 +343,8 @@ export function handleMessage(rooms, socket, raw) {
 
     if (msg.t === 'resume' && typeof msg.token === 'string' && room.tokens.has(msg.token)) {
       const playerId = room.tokens.get(msg.token);
-      if (room.game.players.has(playerId)) {
-        const player = room.game.players.get(playerId);
+      if (room.game.hasPlayer(playerId)) {
+        const player = room.game.getPlayer(playerId);
         // somebody who was turned into a ghost while away is a person again
         if (player.bot && player.wasHuman !== false && room.tokens.get(msg.token)) player.bot = false;
         ctx.room = room; ctx.playerId = playerId;
@@ -385,7 +380,7 @@ export function handleMessage(rooms, socket, raw) {
 
   const room = ctx.room;
   const pid = ctx.playerId;
-  if (!room || !pid || !room.game.players.has(pid)) return fail('You are not at a table.');
+  if (!room || !pid || !room.game.hasPlayer(pid)) return fail('You are not at a table.');
   const isHost = room.hostId === pid;
   const g = room.game;
   let res = { ok: true };
@@ -394,7 +389,7 @@ export function handleMessage(rooms, socket, raw) {
     switch (msg.t) {
       case 'config':
         if (!isHost) return fail('That is the host’s call.');
-        g.setConfig(msg);
+        res = g.setConfig(msg);
         break;
       case 'addBot':
         if (!isHost) return fail('That is the host’s call.');
@@ -411,41 +406,29 @@ export function handleMessage(rooms, socket, raw) {
       case 'start':
         if (!isHost) return fail('That is the host’s call.');
         res = g.start();
-        if (res.ok) room.say('THE HOUSE', 'Cards are dealt. Nobody talks about the cards.', 'system');
-        break;
-      case 'tutorial':
-        if (!isHost) return fail('That is the host’s call.');
-        res = g.startTutorial ? g.startTutorial() : { error: 'No tutorial here.' };
+        if (res.ok) room.say('THE HOUSE', 'Nonna has dealt the week. Nobody talks about what they were dealt.', 'system');
         break;
       case 'skip':
         if (!isHost) return fail('That is the host’s call.');
-        if (g.phase === 'lobby' || g.phase === 'ledger') return fail('Nothing to skip.');
-        g.deadline = null;
-        g.advancePhase();
+        res = g.skip();
         break;
-      case 'whisper': res = g.whisper(pid, str(msg.text, 180)); break;
-      case 'pledge': res = g.pledge(pid, !!msg.value); break;
-      case 'card': res = g.playCard(pid, str(msg.card, 32), msg.target ? str(msg.target, 64) : null); break;
-      case 'marker': res = g.callMarker(pid); break;
-      case 'power': res = g.usePower(pid, str(msg.target, 64)); break;
-      case 'choose': res = g.choose(pid, str(msg.choice, 32)); break;
-      case 'ready': res = g.ready(pid); break;
-      case 'vote': res = g.castVote(pid, str(msg.target, 64)); break;
-      case 'accuse': res = g.accuse(pid, str(msg.target, 64)); break;
+      case 'act': {
+        const a = msg.a && typeof msg.a === 'object' ? msg.a : null;
+        if (!a || typeof a.t !== 'string') return fail('Say that again?');
+        res = g.act(pid, a, { isHost });
+        break;
+      }
       case 'chat': {
-        if (['talk', 'squeeze', 'vote', 'accusation'].includes(g.phase)) {
-          return fail('Not while the rooms are separate. Use your whisper.');
-        }
-        room.say(g.players.get(pid).name, str(msg.text, 200));
+        room.say(g.name(pid), str(msg.text, 200));
         g.bump();
         break;
       }
       case 'rematch': {
         if (!isHost) return fail('That is the host’s call.');
-        if (g.phase !== 'ledger') return fail('Finish this one first.');
+        if (g.phase !== 'over') return fail('Finish this one first.');
         room.game = g.rematch();
         room.lastVersion = -1;
-        room.say('THE HOUSE', 'Same table. New night. Everybody remembers the last one.', 'system');
+        room.say('THE HOUSE', 'Same table. New week. Everybody remembers the last one.', 'system');
         break;
       }
       default:

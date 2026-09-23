@@ -108,12 +108,12 @@ async function openSignal(url, onMessage, onClose, onWaking) {
  * up at the broker, and drives the clock.
  */
 export class PeerHost {
-  constructor({ signalUrl, onState, onError }) {
+  constructor({ signalUrl, chapter, onState, onError }) {
     this.signalUrl = signalUrl;
     this.onState = onState;
     this.onError = onError;
     this.rooms = new Rooms({ store: null });
-    this.room = this.rooms.create();
+    this.room = this.rooms.create({ chapter });
     this.peers = new Map();            // guest id -> { pc, channel, socket }
     this.hostSocket = { data: {}, send: (obj) => this.receive(obj) };
     this.closed = false;

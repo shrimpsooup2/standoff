@@ -453,8 +453,9 @@ export class Game {
     const b = this.s.beat;
     const rolled = [];
     for (let i = 0; i < dice; i++) rolled.push(this.dieFace(preset?.[i]));
+    this.s.uid += 1;
     b.window = {
-      kind: 'roll', dice: rolled, n: dice, target, label, mods: [...mods], faces, noMuscle, clampFace,
+      id: this.s.uid, kind: 'roll', dice: rolled, n: dice, target, label, mods: [...mods], faces, noMuscle, clampFace,
       who: who ?? this.free().map((p) => p.id), passed: [], plays: 0, then, meta,
     };
     this.settleIfQuiet();
@@ -1046,6 +1047,7 @@ export class Game {
         key: b.key, id: b.id, engine: b.engine, stage: b.stage,
         time: b.time, place: b.place, title: b.title, kicker: b.kicker, text: b.text,
         lines: b.lines, receipt: b.stage === 'fallout' ? b.receipt : null,
+        headline: b.headline ?? null, dossier: !!def.dossier, interlude: !!s.scene?.interlude,
         lastRoll: b.lastRoll ?? null,
         window: b.window ? this.windowView(b.window, pid) : null,
         ready: b.ready,
@@ -1059,7 +1061,7 @@ export class Game {
   windowView(w, pid) {
     const me = pid ? this.getPlayer(pid) : null;
     return {
-      kind: w.kind, dice: w.dice, n: w.n, target: w.target, label: w.label, mods: w.mods.map((m) => ({ label: m.label, n: m.n })),
+      id: w.id, kind: w.kind, dice: w.dice, n: w.n, target: w.target, label: w.label, mods: w.mods.map((m) => ({ label: m.label, n: m.n, fix: !!m.fix })),
       total: this.windowTotal(w), faces: w.faces,
       odds: w.target != null && w.n === 2 ? oddsText(2, w.target) : null,
       canAct: me ? (!w.passed.includes(me.id) && this.canTouchRoll(me, w)) : false,

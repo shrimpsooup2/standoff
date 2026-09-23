@@ -136,7 +136,7 @@ function botFixer(g, b) {
 
 export default {
   kicker: 'A VOTE',
-  private: () => false,
+  private: () => true,
 
   start(g, b, def) {
     const c = g.ctx();
