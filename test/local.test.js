@@ -55,6 +55,13 @@ test('three people pass one device through a whole short week', async () => {
   assert.deepEqual(seen.leaks, [], 'nothing private shows while the device is being passed');
 });
 
+test('one device can carry a Families week, both sides of the river', async () => {
+  const { state, seen } = await playLocal('device', ['Andre', 'Mo', 'Kit', 'Lou'], { bots: 4 });
+  assert.equal(state.phase, 'over');
+  assert.ok(state.end.families, 'eight at the table splits into two families');
+  assert.deepEqual(seen.leaks, []);
+});
+
 test('solo plays through with the ghosts filling the table', async () => {
   const { state } = await playLocal('solo', ['Andre']);
   assert.equal(state.phase, 'over');

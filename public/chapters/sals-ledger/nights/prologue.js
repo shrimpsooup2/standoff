@@ -4,7 +4,7 @@ import { money } from '../common.js';
 
 export default {
   id: 'prologue', title: 'The Arrest', act: 0, interlude: true, day: 'MONDAY, 6:10 A.M.', kicker: 'PROLOGUE',
-  beats: ['arrest', 'kitchen'],
+  beats: ['arrest', 'kitchen', 'club'],
   defs: {
     arrest: {
       engine: 'story', time: '6:10 A.M.', place: 'Sal’s garden, Mulberry Avenue', title: 'The Arrest', kicker: 'PROLOGUE',
@@ -30,7 +30,7 @@ export default {
     },
     kitchen: {
       engine: 'story', time: '8:30 A.M.', place: 'Nonna’s kitchen', title: 'Nonna’s Table', kicker: 'THE WEEK',
-      dossier: true,
+      dossier: (c, pid) => !c.families || c.familyOf(pid) === 'b',
       text(c) {
         const pot = c.rng.pick([
           'The espresso pot is on its second round.',
@@ -40,8 +40,22 @@ export default {
         return [
           `${pot} Nonna Benedetto — ninety-four, Sal’s mother, the actual power in this family — has put a 1994 Knicks gym bag on the kitchen table and unzipped it.`,
           `“Morty Klein wants ${money(c.bag.target)} by Monday,” she says. “Every night, you do what you have to do, you come back here, and you put in what you can. Prout has a folder on my son. Every stupid thing you do goes in it. Monday morning, the judge rolls the dice.”`,
-          'She looks at each of you in turn. Then she deals out the week: what you do for the crew, what you want for yourself, and two cards.',
+          c.families
+            ? `She looks at each of her own in turn — ${c.list(c.family('b').map((p) => p.name))} — and deals out the week: what you do for the family, what you want for yourself, and two cards.`
+            : 'She looks at each of you in turn. Then she deals out the week: what you do for the crew, what you want for yourself, and two cards.',
           'Look at yours. Don’t show anybody. Nonna didn’t.',
+        ];
+      },
+    },
+    club: {
+      engine: 'story', time: '9:00 A.M.', place: 'The Castellano social club, Front Street', title: 'Across the River', kicker: 'THE OTHER FAMILY',
+      when: (c) => !!c.families,
+      dossier: (c, pid) => c.familyOf(pid) === 'c',
+      text(c) {
+        return [
+          `Across the river, at the same hour, Vinnie Castellano — sixty-six, cardigan over a shirt and tie, the only man in the neighbourhood Nonna calls by his full name — has ${c.list(c.family('c').map((p) => p.name))} in the back room of his social club, under the photograph of his father shaking hands with Sinatra.`,
+          '“Sal Benedetto goes to court on Monday,” he says. “If he walks, nothing changes. If he doesn’t, this neighbourhood is ours by Christmas. Prout will need help. We are going to help him.”',
+          'He puts a cigar box on the card table and calls it the Envelope. Then he deals out the week, the same way Nonna did, because they learned it from the same man.',
         ];
       },
     },

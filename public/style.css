@@ -120,6 +120,25 @@ p { margin: 0 0 10px; }
 #dossierBtn.alert { color: var(--gold); border-color: var(--gold); position: relative; }
 #dossierBtn.alert::after { content: ''; position: absolute; top: -4px; right: -4px; width: 9px; height: 9px; border-radius: 50%; background: var(--red-bright); box-shadow: 0 0 6px rgba(209, 51, 58, 0.9); }
 
+/* two families: Benedetto green-gold, Castellano wine */
+.chip.envelope { border-color: rgba(160, 60, 90, 0.6); color: #e7a9c0; }
+.env-ico { width: 13px; height: 9px; border-radius: 1px; background: #c9a36a; position: relative; display: inline-block; }
+.env-ico::after { content: ''; position: absolute; inset: 0; background: linear-gradient(160deg, transparent 48%, rgba(0, 0, 0, 0.3) 50%, transparent 52%), linear-gradient(20deg, transparent 48%, rgba(0, 0, 0, 0.3) 50%, transparent 52%); }
+.seat.fam-b { border-left: 4px solid var(--gold); }
+.seat.fam-c { border-left: 4px solid #8e2f55; }
+.meanwhile { font-family: var(--mono); font-size: 12px; color: rgba(242, 232, 213, 0.75); border: 1px dashed rgba(242, 232, 213, 0.25); border-radius: 3px; padding: 8px 12px; margin-bottom: 14px; }
+.meanwhile.fam-c { border-color: rgba(142, 47, 85, 0.6); }
+.meanwhile.fam-b { border-color: rgba(192, 140, 30, 0.6); }
+.d-sec.fam-c { border-top: 3px solid #8e2f55; }
+.d-sec.fam-b { border-top: 3px solid var(--gold); }
+.families-result { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+@media (max-width: 520px) { .families-result { grid-template-columns: 1fr; } }
+.fam-card { background: linear-gradient(168deg, var(--paper), var(--paper-2)); color: #221a10; padding: 14px; border-radius: 3px; box-shadow: var(--lift); border-top: 6px solid var(--gold); --ink-faint: #8a7a5c; }
+.fam-card.fam-c { border-top-color: #8e2f55; }
+.fam-card.won { outline: 3px solid var(--gold); outline-offset: 2px; }
+.fam-card h3 { font-weight: 700; font-size: 20px; }
+.fam-total { font-family: var(--mono); font-weight: 700; font-size: 24px; color: #8a6a12; }
+
 /* ------------------------------------------------------------- the rail -- */
 
 .rail {

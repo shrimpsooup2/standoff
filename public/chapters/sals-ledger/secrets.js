@@ -10,8 +10,12 @@ export const SECRETS = {
   // greed
   skimmer: {
     name: 'The Skimmer', kind: 'greed', pay: 60000, payer: 'Sal, who never checks',
-    text: 'Put less than $50k in the Bag all week, and still see Sal walk.',
-    check: (c, p, end) => end.salWalks && (c.s.bag.by[p.id] ?? 0) < 50000,
+    text: (c, p) => (c.familyOf(p.id) === 'c'
+      ? 'Put less than $50k in Vinnie’s Envelope all week, and still see Sal go down.'
+      : 'Put less than $50k in the Bag all week, and still see Sal walk.'),
+    check: (c, p, end) => (c.familyOf(p.id) === 'c'
+      ? !end.salWalks && (c.s.envelope?.by?.[p.id] ?? 0) < 50000
+      : end.salWalks && (c.s.bag.by[p.id] ?? 0) < 50000),
   },
   collector: {
     name: 'The Collector', kind: 'greed', pay: 80000, payer: 'a buyer in Jersey',
@@ -58,7 +62,7 @@ export const SECRETS = {
   },
   // the story
   'nonnas-favourite': {
-    name: 'Nonna’s Favourite', kind: 'story', pay: 50000, payer: 'Nonna',
+    name: 'Nonna’s Favourite', kind: 'story', pay: 50000, payer: 'Nonna', family: 'b',
     text: 'Get Nonna her ring back before Monday.',
     check: (c) => c.flag('ring') === 'real',
     needs: (c, plan) => plan.includes('ring'),
@@ -80,9 +84,24 @@ export const SECRETS = {
   },
   // the traitor
   rat: {
-    name: 'The Rat', kind: 'rat', pay: 150000, payer: 'Prout',
+    name: 'The Rat', kind: 'rat', pay: 150000, payer: 'Prout', family: 'b',
     text: 'Prout owns you. If Sal goes down and nobody names you on Monday, Prout pays you $150k and your money is safe. Once an act, you can quietly add one to the Case File.',
     check: (c, p, end) => !end.salWalks && !end.named.includes(p.id),
+  },
+  // the other side of the river
+  heir: {
+    name: 'The Heir', kind: 'greed', pay: 60000, payer: 'Vinnie, who is getting old', family: 'c',
+    text: 'Put more in Vinnie’s Envelope than any other Castellano, and see Sal go down.',
+    check: (c, p, end) => {
+      const by = c.s.envelope?.by ?? {};
+      const mine = by[p.id] ?? 0;
+      return !end.salWalks && mine > 0 && c.family('c').every((q) => q.id === p.id || (by[q.id] ?? 0) < mine);
+    },
+  },
+  turncoat: {
+    name: 'The Turncoat', kind: 'rat', pay: 100000, payer: 'Nonna, who has paid you since 2011', family: 'c',
+    text: 'Nonna owns you. If Sal walks and no Castellano names you on Monday, she pays you $100k and your money is safe. Once an act, you can quietly lose a page of Prout’s case.',
+    check: (c, p, end) => end.salWalks && !end.named.includes(p.id),
   },
 };
 
@@ -109,7 +128,7 @@ export function dealSecrets(c, plan) {
   const ratMode = c.s.config.rat;
   const withRat = ratMode === 'on' ? n >= 3 : ratMode === 'off' ? false : n >= 5;
   const pool = rng.shuffle(Object.keys(SECRETS).filter((id) => id !== 'rat' && id !== 'cousins'
-    && (!SECRETS[id].needs || SECRETS[id].needs(c, plan))));
+    && SECRETS[id].family !== 'c' && (!SECRETS[id].needs || SECRETS[id].needs(c, plan))));
   const out = new Map();
   let i = 0;
   if (withRat) { out.set(ps[i].id, { id: 'rat' }); i += 1; }
@@ -129,5 +148,40 @@ export function dealSecrets(c, plan) {
     if (SECRETS[id].target) secret.target = rng.pick(c.players.filter((q) => q.id !== p.id)).id;
     out.set(p.id, secret);
   }
+  for (const p of c.players) p.secret = out.get(p.id) ?? { id: 'clean-hands' };
+}
+
+/**
+ * A Families game deals each side its own secrets: the rat among the
+ * Benedettos, Nonna's turncoat among the Castellanos, and one pair of cousins
+ * across the river from each other.
+ */
+export function dealFamilySecrets(c, plan) {
+  const rng = c.rng;
+  const ratMode = c.s.config.rat;
+  const out = new Map();
+  const b = rng.shuffle(c.family('b'));
+  const k = rng.shuffle(c.family('c'));
+  // one of ours is theirs
+  if (ratMode !== 'off' && (ratMode === 'on' || b.length >= 4)) out.set(b.shift().id, { id: 'rat' });
+  if (ratMode !== 'off' && (ratMode === 'on' || k.length >= 4)) out.set(k.shift().id, { id: 'turncoat' });
+  // cousins across the river
+  if (b.length && k.length && rng.chance(0.75)) {
+    const x = b.shift(); const y = k.shift();
+    out.set(x.id, { id: 'cousins', partner: y.id });
+    out.set(y.id, { id: 'cousins', partner: x.id });
+  }
+  const deal = (people, fam) => {
+    const pool = rng.shuffle(Object.keys(SECRETS).filter((id) => !['rat', 'turncoat', 'cousins'].includes(id)
+      && (!SECRETS[id].family || SECRETS[id].family === fam) && (!SECRETS[id].needs || SECRETS[id].needs(c, plan))));
+    people.forEach((p, i) => {
+      const id = pool[i % pool.length];
+      const secret = { id };
+      if (SECRETS[id].target) secret.target = rng.pick(c.players.filter((q) => q.id !== p.id)).id;
+      out.set(p.id, secret);
+    });
+  };
+  deal(b, 'b');
+  deal(k, 'c');
   for (const p of c.players) p.secret = out.get(p.id) ?? { id: 'clean-hands' };
 }

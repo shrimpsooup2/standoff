@@ -14,7 +14,10 @@ const PAGE_VALUE = 30000;
 export function ending(c) {
   const s = c.s;
   const salWalks = !!c.flag('salWalks');
-  const named = c.flag('trialNamed') ? [c.flag('trialNamed')] : [];
+  const named = [c.flag('trialNamed'), c.flag('trialNamedC')].filter(Boolean);
+  const fams = !!s.families;
+  const famOf = (p) => (fams ? c.familyOf(p.id) : 'b');
+  const winners = salWalks ? 'b' : 'c';
   const n = c.players.length;
   const rows = {};
   for (const p of c.players) rows[p.id] = { pid: p.id, name: p.name, start: p.cash, lines: [], money: p.cash };
@@ -24,15 +27,19 @@ export function ending(c) {
     r.lines.push({ label, n: amount });
   };
 
-  // the Verdict
+  // the Verdict: whoever's side lost Monday loses half
   for (const p of c.players) {
     const r = rows[p.id];
+    const fam = famOf(p);
+    if (fam === winners) continue;
     const ratSafe = p.secret?.id === 'rat' && !salWalks && !named.includes(p.id);
-    if (salWalks) continue;
-    if (p.deal) { r.lines.push({ label: 'Sal went down, but you had a deal', n: 0 }); continue; }
+    const turncoatSafe = p.secret?.id === 'turncoat' && salWalks && !named.includes(p.id);
+    const what = fam === 'c' ? 'Sal walked, and Vinnie took it out on everybody' : 'Sal went down';
+    if (p.deal) { r.lines.push({ label: `${what}, but you had a deal`, n: 0 }); continue; }
     if (ratSafe) { r.lines.push({ label: 'Sal went down, and Prout looked after you', n: 0 }); continue; }
+    if (turncoatSafe) { r.lines.push({ label: 'Sal walked, and Nonna looked after you', n: 0 }); continue; }
     const lost = round5k(r.money / 2);
-    if (lost) add(p.id, -lost, 'Sal went down: half of what you had');
+    if (lost) add(p.id, -lost, `${what}: half of what you had`);
   }
   // Prout's money
   for (const p of c.players) {
@@ -42,12 +49,21 @@ export function ending(c) {
   }
   // Sal's thanks, and Nonna's split of what Morty didn't need
   if (salWalks) {
-    const loyal = c.players.filter((p) => !p.deal && !(p.secret?.id === 'rat' && named.includes(p.id)));
+    const loyal = c.players.filter((p) => famOf(p) === 'b' && !p.deal && !(p.secret?.id === 'rat' && named.includes(p.id)));
     for (const p of loyal) add(p.id, CREW_PAY, 'Sal’s thanks');
     const over = Math.max(0, s.bag.total - s.bag.target);
     if (over > 0 && loyal.length) {
       const each = round5k(over / loyal.length);
       for (const p of loyal) add(p.id, each, 'Nonna split what Morty didn’t need');
+    }
+  }
+  // or, across the river, Vinnie dividing up Sal's businesses
+  if (!salWalks && fams) {
+    const ours = c.players.filter((p) => famOf(p) === 'c' && !p.deal && !(p.secret?.id === 'turncoat' && named.includes(p.id)));
+    const slice = ours.length ? round5k((s.bag.target * 0.2) / ours.length) : 0;
+    for (const p of ours) {
+      add(p.id, CREW_PAY, 'Vinnie’s thanks');
+      if (slice) add(p.id, slice, 'A slice of what used to be Sal’s');
     }
   }
   // pages of the ledger
@@ -88,6 +104,15 @@ export function ending(c) {
   const table = Object.values(rows).sort((a, b) => b.money - a.money);
   table.forEach((r, i) => { r.rank = i + 1; });
   const winner = table[0];
+  const families = fams ? {
+    winner: winners,
+    names: s.families.names,
+    envelope: s.envelope?.total ?? 0,
+    rows: s.families.ids.map((id) => {
+      const members = table.filter((r) => c.familyOf(r.pid) === id);
+      return { id, name: s.families.names[id], total: members.reduce((a, r) => a + r.money, 0), members: members.map((r) => r.name), best: members[0]?.name ?? null };
+    }),
+  } : null;
 
   return {
     salWalks,
@@ -97,9 +122,11 @@ export function ending(c) {
     named: named.map((id) => c.name(id)),
     rat: (() => { const r = c.players.find((p) => p.secret?.id === 'rat'); return r ? { id: r.id, name: r.name, caught: named.includes(r.id) } : null; })(),
     deals: c.players.filter((p) => p.deal).map((p) => ({ id: p.id, name: p.name, where: p.deal.where, forfeit: !!c.flag(`dealForfeit:${p.id}`) })),
-    winner: { id: winner.pid, name: winner.name, money: winner.money },
+    winner: { id: winner.pid, name: winner.name, money: winner.money, family: fams ? c.familyOf(winner.pid) : null },
+    families,
+    turncoat: (() => { const t = c.players.find((p) => p.secret?.id === 'turncoat'); return t ? { id: t.id, name: t.name, caught: named.includes(t.id) } : null; })(),
     table: table.map((r) => ({
-      id: r.pid, name: r.name, rank: r.rank, money: r.money, start: r.start, lines: r.lines,
+      id: r.pid, name: r.name, rank: r.rank, money: r.money, start: r.start, lines: r.lines, family: fams ? c.familyOf(r.pid) : null,
       secret: secrets[r.pid] ?? null,
       job: c.p(r.pid).job ? c.g.chapter.jobs[c.p(r.pid).job]?.name : null,
       epilogue: epilogue(c, c.p(r.pid), r, { salWalks, named, table }),
@@ -136,7 +163,21 @@ function epilogue(c, p, row, { salWalks, table }) {
   const rng = c.rng;
   const first = row === table[0];
   const last = row === table[table.length - 1];
-  if (p.secret?.id === 'rat') {
+  if (c.s.families && c.familyOf(p.id) === 'c' && !p.deal && p.secret?.id !== 'turncoat') {
+    bits.push(salWalks
+      ? rng.pick([
+        `${p.name} spent the winter explaining to Vinnie why it wasn’t their fault. Vinnie listened to all of it and said nothing, which was worse.`,
+        `${p.name} moved to Vinnie’s cousin’s place in Florida “for a while.” It has been a while.`,
+      ])
+      : rng.pick([
+        `${p.name} ended up with the dry cleaner’s on Mulberry Avenue, which used to pay Sal and now pays them. Nonna crosses the street to avoid it.`,
+        `By Christmas the neighbourhood was Vinnie’s, and ${p.name} had a corner of it. They sit in Sal’s old booth at Dolores’s. Dolores serves them. Slowly.`,
+      ]));
+  } else if (p.secret?.id === 'turncoat') {
+    bits.push(c.flag('trialNamedC') === p.id
+      ? `${p.name} was Nonna’s all along. Vinnie handed them to Prout in a courthouse men’s room. Nonna sent flowers. Nobody else did.`
+      : `Nobody across the river ever found out that ${p.name} had been Nonna’s since 2011. Every Easter, a tray of pignoli cookies arrives at their door with no card.`);
+  } else if (p.secret?.id === 'rat') {
     if (c.flag('trialNamed') === p.id) bits.push(`${p.name} wore Prout’s wire all week and was caught in a corridor by a ninety-four-year-old woman. They moved to Phoenix. Nonna still has the wire. She uses it to tie up tomatoes.`);
     else if (!salWalks) bits.push(`Nobody ever found out about ${p.name}. Prout paid in cash, in a diner in Hoboken, and never once said thank you.`);
     else bits.push(`${p.name} wore Prout’s wire all week, and Sal walked anyway. Prout doesn’t return ${p.name}’s calls.`);

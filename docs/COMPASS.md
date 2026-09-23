@@ -570,11 +570,14 @@ The social shape changes with the number of people, on purpose.
 
 **Four to six — The Crew.** One crew against the week. From five players, one secret is the Rat. Every engine works; the Pick and the Whispers are at their best.
 
-**Seven to ten — The Families.** Two crews: the Benedettos, who need Sal to walk, and the Castellanos, who need him convicted so the neighbourhood falls to them. The Verdict becomes the showdown between two halves of the table.
+**Seven to ten — The Families.** Two crews: the Benedettos, who need Sal to walk, and the Castellanos, who need him convicted so the neighbourhood falls to them. The Verdict becomes the showdown between two halves of the table. *(Built — on automatically from seven, and switchable on or off in the lobby.)*
 
-- Most nights each family plays its own scene. Some nights the families share one (**The Motel**, **The Wedding**), and one night the whole neighbourhood does: in **The Raid** the Feds come for everybody, and the two families can hide each other's things — or not.
-- Cousins are dealt across the family line, so two people on opposite sides have a reason to protect each other at their own family's expense.
-- Prout offers deals to both families. He doesn't care who wins.
+- **Nights apart, at the same time.** Four nights a week the families are in different stories simultaneously: the Benedettos rob a bank while the Castellanos do Vinnie's collections, run the card room above the laundromat (and find the cop at table four), buy pages of Sal's ledger from Benny's back room, and bring seven crates off a ferry. Each side's screens show only its own night, with a line saying what the other side is up to.
+- **Nights together.** Vinnie's daughter's wedding (the Benedettos bring the gifts, the Castellanos work the receiving line), **the Raid** — the Feds come for everybody at five in the morning, and one place to hide your money is with somebody from the other family, who decides the next morning whether you get it back — the Room, and the last dinner at Dolores's.
+- **The Envelope.** The Castellanos' answer to the Bag: a cigar box at Vinnie's club. Money on both sides cancels out; every tenth of Morty's number by which the Envelope out-spends the Bag adds one to what Sal needs on Monday.
+- **One of each side belongs to the other.** The Benedettos may have Prout's rat; the Castellanos may have Nonna's turncoat, who can quietly lose a page of Prout's case. On Monday Nonna and Vinnie each want a name.
+- **Cousins across the river**: one pair dealt across the family line, paid if both finish in the top half.
+- Prout doesn't make deals with Castellanos; he has other plans for Vinnie. A Castellano can still name a Benedetto in the Room.
 - The individual ranking covers the whole table. A Castellano can finish richest even if the Castellanos lose Monday.
 
 ---

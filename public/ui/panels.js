@@ -12,7 +12,8 @@ export function seats(state, { me }) {
     if (p.bot) tags.push('<span class="tag">ghost</span>');
     if (p.low) tags.push('<span class="tag">lying low</span>');
     const worth = p.cash != null ? `<span class="s-cash">${money(p.cash)}</span>` : p.band ? `<span class="s-band ${p.band.replace(' ', '-')}">${esc(p.band)}</span>` : '';
-    return `<div class="seat${p.id === me ? ' you' : ''}${p.jailed ? ' jailed' : ''}${!p.connected && !p.bot ? ' off' : ''}" title="${esc(p.job ?? '')}">
+    const fam = p.family ? ` fam-${p.family}` : '';
+    return `<div class="seat${p.id === me ? ' you' : ''}${p.jailed ? ' jailed' : ''}${!p.connected && !p.bot ? ' off' : ''}${fam}" title="${esc([p.family ? state.families?.names?.[p.family] : null, p.job].filter(Boolean).join(' · '))}">
       <div class="s-top"><span class="dot${p.pending ? ' live' : ''}"></span><span class="s-name">${esc(p.name)}</span>${p.grudgesAgainst ? `<span class="s-grudge" title="${p.grudgesAgainst} grudge${p.grudgesAgainst === 1 ? '' : 's'} held against them">${'✕'.repeat(Math.min(3, p.grudgesAgainst))}</span>` : ''}</div>
       <div class="s-job">${esc(p.job ?? '')}</div>
       <div class="s-bottom">${worth}${heatPips(p.heat, p.jailed)}</div>
@@ -162,6 +163,10 @@ export function dossier(state, ui) {
     <div><span class="stamp">your cash</span><div class="d-cash">${money(you.cash)}</div>${you.stash ? `<div class="faint small">+ ${money(you.stash)} under the mattress</div>` : ''}</div>
     <div><span class="stamp">heat</span><div>${heatPips(you.heat, you.jailed)}</div><div class="faint small">Three and you’re picked up.</div></div>
   </div>`);
+  if (state.families?.you) {
+    const mine = state.families.you;
+    sections.push(`<section class="d-sec fam fam-${mine}"><span class="stamp">your family — everybody knows it</span><h3>${esc(state.families.names[mine])}</h3><p>${mine === 'c' ? 'You need Sal convicted: then the neighbourhood is Vinnie’s, and some of it is yours. What goes in the Envelope helps Prout. What’s in your pocket is yours — unless Sal walks.' : 'You need Sal to walk. What goes in the Bag pays Morty. What’s in your pocket is yours — unless Sal goes down.'}</p></section>`);
+  }
   if (you.job) {
     const abil = [];
     if (you.muscle) abil.push('ready tonight');
@@ -175,7 +180,8 @@ export function dossier(state, ui) {
     sections.push(`<section class="d-sec secret"><span class="stamp">your secret — nobody else knows it</span><h3>${esc(secret.name)}</h3><p>${esc(secret.text)}</p><p class="faint small">Pays ${esc(secret.payLabel ?? '')} on Monday.</p></section>`);
   }
   if (you.rat) {
-    sections.push(`<section class="d-sec rat"><span class="stamp">the wire</span><p>Once an act, you can quietly add one to Prout’s Case File. Nobody sees it happen.</p>${you.rat.canWire ? actBtn('Say something into the wire', { t: 'wire' }, { cls: 'ghost-btn small red' }) : '<p class="faint small">Used this act.</p>'}</section>`);
+    const turncoat = you.rat.kind === 'turncoat';
+    sections.push(`<section class="d-sec rat"><span class="stamp">${turncoat ? 'nonna’s friend' : 'the wire'}</span><p>${turncoat ? 'Once an act, you can quietly lose a page of Prout’s case against Sal. Nobody sees it happen.' : 'Once an act, you can quietly add one to Prout’s Case File. Nobody sees it happen.'}</p>${you.rat.canWire ? actBtn(turncoat ? 'Lose a page' : 'Say something into the wire', { t: 'wire' }, { cls: 'ghost-btn small red' }) : '<p class="faint small">Used this act.</p>'}</section>`);
   }
   if (you.jailed) {
     const used = you.jailUsed ?? {};

@@ -114,3 +114,78 @@ test('a view never shows somebody else’s secret or cash at a big table', () =>
     }
   }
 });
+
+// ------------------------------------------------------------ families --
+
+for (const n of [7, 8, 9, 10]) {
+  test(`two families at ${n} reach Monday, and one of them wins it`, () => {
+    for (let r = 0; r < 3; r++) {
+      const { g } = play({ n, seed: `fam-${n}-${r}` });
+      assert.equal(g.phase, 'over');
+      const e = g.s.end;
+      assert.ok(e.families, 'it was a Families game');
+      assert.equal(e.families.rows.length, 2);
+      assert.equal(e.families.winner, e.salWalks ? 'b' : 'c');
+      const fams = Object.values(g.s.families.of);
+      assert.equal(fams.filter((f) => f === 'b').length, Math.ceil(n / 2), 'the Benedettos get the extra seat');
+      assert.ok(g.s.week.played.includes('c-collection'), 'the Castellanos had their own first night');
+      assert.ok(g.s.week.played.includes('raid'), 'and everybody shared the raid');
+      assert.equal(g.s.week.n, 7);
+    }
+  });
+}
+
+test('a short Families week is four nights', () => {
+  for (let r = 0; r < 3; r++) {
+    const { g } = play({ n: 8, length: 'short', seed: `famshort-${r}` });
+    assert.equal(g.phase, 'over');
+    assert.equal(g.s.week.n, 4);
+  }
+});
+
+test('Families can be switched on for a small table, and off for a big one', () => {
+  const on = new Game({ code: 'T', seed: 'on' });
+  for (let i = 0; i < 4; i++) on.addBot();
+  on.setConfig({ families: 'on' });
+  on.start();
+  assert.ok(on.s.families);
+  const off = new Game({ code: 'T', seed: 'off' });
+  for (let i = 0; i < 8; i++) off.addBot();
+  off.setConfig({ families: 'off' });
+  off.start();
+  assert.equal(off.s.families, undefined);
+});
+
+test('a night apart survives being saved and restored in the middle', () => {
+  for (let r = 0; r < 3; r++) {
+    const { g } = play({ n: 8, seed: `famtrip-${r}`, roundTrip: true });
+    assert.equal(g.phase, 'over');
+  }
+});
+
+test('on a night apart, each family sees its own story and nobody else’s choices', () => {
+  const g = new Game({ code: 'T', seed: 'apart' });
+  let t = 1_000_000;
+  g.clock = () => t;
+  for (let i = 0; i < 8; i++) g.addBot();
+  g.start();
+  let checked = 0;
+  for (let i = 0; i < 4000 && g.phase === 'playing' && checked < 40; i++) {
+    t += 700; g.tick(t);
+    if (!g.s.tracks) continue;
+    for (const p of g.s.players) {
+      const v = g.view(p.id);
+      const fam = g.familyOf(p);
+      const mine = g.s.tracks[fam];
+      if (!mine.beat) continue;
+      assert.equal(v.beat?.id, mine.beat.id, 'your own family’s beat');
+      assert.ok(v.tracks.find((x) => x.mine).id === fam);
+      const other = g.s.tracks[fam === 'b' ? 'c' : 'b'];
+      if (other.beat?.engine === 'choose' && other.beat.stage === 'choose' && v.beat.engine !== 'choose') {
+        assert.ok(!JSON.stringify(v).includes('"myChoice"'), 'nothing from the other family’s private choices');
+      }
+      checked += 1;
+    }
+  }
+  assert.ok(checked > 10, 'a night apart was actually looked at');
+});

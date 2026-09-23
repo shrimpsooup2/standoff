@@ -58,7 +58,9 @@ export function roomBeat({ final = false } = {}) {
         { id: 'silent', label: 'Say nothing', blurb: '“I want my lawyer.”', honest: true },
         { id: 'small', label: 'Give him something small', blurb: 'A detail. Harmless on its own. Prout is good at putting harmless things together.' },
         { id: 'name', label: 'Name somebody', blurb: 'They take two heat and learn that somebody named them — not who. Prout takes one heat off you.', target: 'other', targets: c.players.filter((q) => q.id !== pid).map((q) => q.id) },
-        p.deal
+        c.familyOf(pid) === 'c'
+          ? { id: 'deal', label: 'Take the deal', blurb: 'Prout doesn’t make deals with Castellanos. He has other plans for Vinnie.', disabled: 'Not for you.' }
+          : p.deal
           ? { id: 'deal', label: 'Take the deal', blurb: 'You already have one.', disabled: 'You already have a deal.' }
           : { id: 'deal', label: 'Take the deal', blurb: `Your money is safe whatever happens Monday, and Prout pays you ${money(deals ? 30000 : 60000)}. The Case File jumps. Nobody finds out until the Trial.`, greedy: true },
       ];
@@ -69,7 +71,8 @@ export function roomBeat({ final = false } = {}) {
       const rat = p.secret?.id === 'rat';
       const standUp = p.secret?.id === 'stand-up';
       const dire = c.caseFileValue >= 6 || c.bag.total < c.bag.target * (final ? 0.7 : 0.3);
-      const enemy = Object.entries(p.grudges).find(([, n]) => n > 0)?.[0] ?? (['grudge', 'snake'].includes(p.secret?.id) ? p.secret.target : null);
+      const rival = c.families ? c.rng.pick(c.players.filter((q) => c.familyOf(q.id) !== c.familyOf(p.id))) : null;
+      const enemy = Object.entries(p.grudges).find(([, n]) => n > 0)?.[0] ?? (['grudge', 'snake'].includes(p.secret?.id) ? p.secret.target : null) ?? (c.familyOf(p.id) === 'c' && c.rng.chance(0.5) ? rival?.id : null);
       const r = c.rng();
       if (rat) return r < 0.5 ? { option: 'small' } : { option: 'name', target: enemy ?? c.rng.pick(c.others(p.id)).id };
       if (standUp) return { option: 'silent' };

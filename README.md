@@ -83,6 +83,20 @@ can be a lie. A doctored note in the Whispers is caught when every card is shown
 next to every note — unless you held a Forgery — and one card in six is simply
 wrong, and marked as such, so nobody can hide behind it.
 
+### Seven to ten: two families
+
+From seven players the table splits in two. The **Benedettos** need Sal to walk;
+the **Castellanos**, across the river, need him convicted so the neighbourhood is
+theirs by Christmas. Most nights the families are apart at the same time, each in
+its own story — the Castellanos run Vinnie's collections, a card room with a cop at
+table four, a shoebox of ledger pages at the pawn shop and seven crates off a
+ferry. Some nights they share: a Castellano wedding, and a dawn raid by the Feds
+where the safest place for your money is in the hands of somebody from the other
+family. The Castellanos fill Vinnie's Envelope while the Benedettos fill the Bag;
+whichever out-spends the other moves the Verdict. Each side may be harbouring
+somebody who belongs to the other. The richest person still wins, whichever side
+they were on.
+
 The design, and the reasons for it, are in [`docs/COMPASS.md`](docs/COMPASS.md).
 
 ## Play it
@@ -143,7 +157,8 @@ src/broker.js               introduces two browsers to each other, and never see
 src/persist.js              the week on disk, atomically
 
 public/engine/              the rules, and nothing about banks or grudges
-  game.js                   one table: the week, beats, dice windows, offers, views
+  game.js                   one table: the week, beats, dice windows, offers, views,
+                            and two families' nights running side by side
   engines/                  one file per kind of beat: vote, choose, roll, whispers,
                             grab, plan, draft, report, sitdown, story
   cards.js bots.js dice.js rng.js util.js
@@ -152,7 +167,8 @@ public/chapters/            the stories
   index.js                  every chapter, and the ones still to come
   sals-ledger/              Chapter 1
     index.js                the director: the week's plan and what comes next
-    nights/                 every night, beat by beat
+    nights/                 every night, beat by beat, including the Castellanos' own
+    families.js             seven to ten: two families, nights apart, the Envelope
     jobs.js secrets.js calls.js complications.js ending.js common.js
 
 public/net/room.js          tables, seats, tokens, host migration — the same file the server runs

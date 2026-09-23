@@ -27,7 +27,7 @@ const PACE = {
   brisk: { vote: 60, choose: 40, notes: 30, open: 45, move: 15, plan: 30, pick: 15, sitdown: 120, report: 20, roll: 10, fallout: 25, window: 6, story: 30 },
 };
 
-const DEFAULT_CONFIG = { length: 'full', clock: true, pace: 'normal', rat: 'auto' };
+const DEFAULT_CONFIG = { length: 'full', clock: true, pace: 'normal', rat: 'auto', families: 'auto' };
 
 let uidSeq = 0;
 
@@ -120,7 +120,77 @@ export class Game {
 
   /** Everybody who can take part in the beat that is running now. */
   free() {
-    return this.s.players.filter((p) => !this.isAway(p) && !this.isBenched(p));
+    return this.s.players.filter((p) => !this.isAway(p) && !this.isBenched(p) && this.inCurrentTrack(p));
+  }
+
+  // ------------------------------------------------------------ tracks ---
+  //
+  // In a Families game the two families spend some nights apart, each in its
+  // own story at the same time. Each family's night is a track: its own scene,
+  // beat, clock and memo. Everything else — the players, the Bag, the Case
+  // File, the flags — is shared. Working inside a track swaps its fields into
+  // the usual places, so every engine and every night runs unchanged.
+
+  familyOf(p) {
+    const id = typeof p === 'string' ? p : p?.id;
+    return this.s.families?.of?.[id] ?? null;
+  }
+
+  /** Is this person part of whatever is running right now? */
+  inCurrentTrack(p) {
+    return !this.track || this.familyOf(p) === this.track;
+  }
+
+  get trackIds() {
+    return this.s.tracks ? Object.keys(this.s.tracks) : [];
+  }
+
+  inTrack(id, fn) {
+    const t = this.s.tracks?.[id];
+    if (!t || this.track === id) return fn();
+    const keys = ['scene', 'beat', 'night', 'deadline', 'botAt'];
+    const saved = Object.fromEntries(keys.map((k) => [k, this.s[k]]));
+    const was = this.track;
+    for (const k of keys) this.s[k] = t[k] ?? null;
+    this.track = id;
+    try {
+      return fn();
+    } finally {
+      for (const k of keys) t[k] = this.s[k];
+      for (const k of keys) this.s[k] = saved[k];
+      this.track = was;
+    }
+  }
+
+  /** Run something in every family's night, or just once if there's only one. */
+  eachTrack(fn) {
+    if (!this.s.tracks || this.track) return [fn()];
+    const out = [];
+    for (const id of this.trackIds) out.push(this.inTrack(id, fn));
+    this.checkMerge();
+    return out;
+  }
+
+  /** When every family has finished its night, they come back together. */
+  checkMerge() {
+    if (!this.s.tracks || this.track) return;
+    if (!this.trackIds.every((id) => this.s.tracks[id].finished)) return;
+    const parts = this.trackIds.map((id) => this.s.tracks[id].scene?.nightId);
+    this.s.tracks = null;
+    this.s.scene = null;
+    this.s.beat = null;
+    this.s.deadline = null;
+    this.chapter.afterNight?.(this.ctx(), parts[0], parts);
+    this.nextNight();
+    this.bump();
+  }
+
+  /** The track a player's own screen should show. */
+  trackFor(pid) {
+    if (!this.s.tracks) return null;
+    const fam = this.familyOf(pid);
+    if (fam && this.s.tracks[fam]) return fam;
+    return this.trackIds.find((id) => !this.s.tracks[id].finished) ?? this.trackIds[0];
   }
 
   pace(kind) {
@@ -181,6 +251,7 @@ export class Game {
     if (typeof c.clock === 'boolean') cfg.clock = c.clock;
     if (PACE[c.pace]) cfg.pace = c.pace;
     if (['auto', 'on', 'off'].includes(c.rat)) cfg.rat = c.rat;
+    if (['auto', 'on', 'off'].includes(c.families)) cfg.families = c.families;
     this.bump();
     return { ok: true };
   }
@@ -265,29 +336,63 @@ export class Game {
     const w = this.s.week;
     w.i += 1;
     if (w.i >= w.plan.length) return this.finish();
-    let nightId = w.plan[w.i];
+    const entry = w.plan[w.i];
+    if (entry.startsWith('split:')) return this.startSplit(entry.slice(6).split('|'));
+    return this.startNight(entry);
+  }
+
+  /** The families go their separate ways for a night. */
+  startSplit(parts) {
+    const w = this.s.week;
+    w.n += 1;
+    this.releaseNight();
+    const fams = this.s.families?.ids ?? ['b', 'c'];
+    this.s.tracks = {};
+    this.s.scene = null;
+    this.s.beat = null;
+    fams.forEach((fam, i) => { this.s.tracks[fam] = { family: fam, entry: parts[i] ?? parts[0], finished: false, scene: null, beat: null, night: null, deadline: null, botAt: null }; });
+    for (const fam of fams) this.inTrack(fam, () => this.startNight(this.s.tracks[fam].entry, { counted: true }));
+    this.checkMerge();
+    return true;
+  }
+
+  /** Lockup and lying low end when their night has passed. */
+  releaseNight() {
+    const w = this.s.week;
+    for (const p of this.s.players) {
+      if (p.jailUntil != null && p.jailUntil < w.n) { p.jailUntil = null; p.heat = 0; p.used.jail = null; this.remember(`${p.name} is out of county.`); }
+      if (p.lowUntil != null && p.lowUntil < w.n) p.lowUntil = null;
+    }
+  }
+
+  startNight(entry, { counted = false } = {}) {
+    const w = this.s.week;
+    let nightId = entry;
     let slotAct = null;
     if (nightId.startsWith('slot:')) {
       const slot = nightId.slice(5);
       slotAct = this.chapter.slots?.[slot]?.act ?? null;
       nightId = this.chapter.pick(this.ctx(), slot);
+      if (!nightId && this.track) nightId = this.chapter.fallbackNight?.(this.ctx(), slot) ?? null;
       if (!nightId) {
+        if (this.track) { this.s.tracks[this.track].finished = true; return false; }
         // nothing fits this slot: drop it, and the morning after it
         w.plan.splice(w.i, 1);
         if (w.plan[w.i] === 'morning' && w.plan[w.i - 1] === 'morning') w.plan.splice(w.i, 1);
         w.i -= 1;
         return this.nextNight();
       }
-      w.plan[w.i] = nightId;
+      if (!this.track) w.plan[w.i] = nightId;
       w.acts = { ...(w.acts ?? {}), [w.i]: slotAct };
     }
     slotAct = slotAct ?? w.acts?.[w.i] ?? null;
     let def = this.chapter.night(nightId);
     const redirect = def.redirect?.(this.ctx());
-    if (redirect) { nightId = redirect; w.plan[w.i] = nightId; def = this.chapter.night(nightId); }
+    if (redirect) { nightId = redirect; if (!this.track) w.plan[w.i] = nightId; def = this.chapter.night(nightId); }
+    w.played = [...(w.played ?? []), nightId];
     // mornings, the Room and the Trial are not nights: nobody's sentence
     // runs out over breakfast
-    if (!def.interlude) w.n += 1;
+    if (!def.interlude && !counted) w.n += 1;
     this.s.night = { id: nightId, facts: [], memo: {}, earned: {}, n: w.n };
     // interludes belong to whichever act they sit in
     const act = slotAct ?? def.act ?? w.act ?? 0;
@@ -299,12 +404,9 @@ export class Game {
       kicker: typeof def.kicker === 'function' ? def.kicker(c0) : def.kicker ?? null, act,
       day: typeof def.day === 'function' ? def.day(this.ctx()) : def.day ?? null,
       count: this.chapter.nightNumber?.(this.ctx(), nightId) ?? null,
+      family: this.track ?? null,
     };
-    // lockup and lying low end when their night has passed
-    for (const p of this.s.players) {
-      if (p.jailUntil != null && p.jailUntil < w.n) { p.jailUntil = null; p.heat = 0; p.used.jail = null; this.remember(`${p.name} is out of county.`); }
-      if (p.lowUntil != null && p.lowUntil < w.n) p.lowUntil = null;
-    }
+    if (!counted) this.releaseNight();
     def.open?.(this.ctx());
     return this.nextBeat();
   }
@@ -371,6 +473,13 @@ export class Game {
         this.s.scene.done.push('end');
         this.settleCuts();
         this.nightDef.close?.(this.ctx());
+        if (this.track) {
+          // this family is done for the night; the other may not be
+          this.s.tracks[this.track].finished = true;
+          this.s.beat = null;
+          this.s.deadline = null;
+          return false;
+        }
         this.chapter.afterNight?.(this.ctx(), this.s.scene.nightId);
         return this.nextNight();
       }
@@ -464,7 +573,7 @@ export class Game {
 
   /** One die, unless somebody loaded it. */
   dieFace(preset = null) {
-    const loaded = this.s.players.find((p) => p.armed.loaded);
+    const loaded = this.s.players.find((p) => p.armed.loaded && this.inCurrentTrack(p));
     if (loaded) {
       loaded.armed.loaded = false;
       if (this.s.night) {
@@ -494,7 +603,7 @@ export class Game {
   }
 
   canTouchRoll(p, w) {
-    if (this.isAway(p)) return false;
+    if (this.isAway(p) || !this.inCurrentTrack(p)) return false;
     const has = p.cards.some((c) => CARDS[c.id]?.window === 'roll');
     const muscle = p.job === 'muscle' && p.used.muscle !== this.s.week.n && w.who.includes(p.id) && !w.noMuscle;
     const piece = p.cards.some((c) => c.id === 'the-piece') && w.who.includes(p.id);
@@ -569,14 +678,14 @@ export class Game {
     if (w.n === 2) {
       for (const p of this.s.players) {
         const bet = p.armed.sideBet;
-        if (!bet) continue;
+        if (!bet || !this.inCurrentTrack(p)) continue;
         p.armed.sideBet = null;
         const high = total >= 7;
         const right = (bet === 'high') === high;
         if (right) {
           let got = 0;
           for (const q of this.s.players) {
-            if (q.id === p.id) continue;
+            if (q.id === p.id || !this.inCurrentTrack(q)) continue;
             const pay = Math.min(5000, q.cash);
             q.cash -= pay; got += pay;
           }
@@ -615,34 +724,46 @@ export class Game {
         default: break;
       }
       if (this.s.phase !== 'playing') return { error: 'Not now.' };
-      const b = this.s.beat;
-      let res;
-      switch (t) {
-        case 'next': res = this.ready(pid); break;
-        case 'pass': res = this.passWindow(pid); break;
-        case 'card': res = playCard(this, p, a); break;
-        case 'respond': res = this.respond(p, a); break;
-        case 'muscle': res = this.useMuscle(p); break;
-        case 'mechanic': res = this.useMechanic(p); break;
-        case 'grudge': res = this.useGrudge(p, a); break;
-        case 'wipe': res = this.wipeStamp(p, a); break;
-        case 'sell': res = this.sellCard(p, a); break;
-        case 'jail': res = this.jailAction(p, a); break;
-        case 'wire': res = this.useWire(p); break;
-        case 'offer': res = this.makeOffer(p, a); break;
-        case 'withdraw': res = this.withdraw(p, a); break;
-        default: {
-          if (!b || !this.engine?.act) return { error: 'Nothing to do yet.' };
-          if (b.window) return { error: 'Wait for the dice.' };
-          res = this.engine.act(this, b, this.beatDef, pid, a);
-        }
+      // on a night apart, a move belongs to the mover's own family's night
+      if (this.s.tracks && !this.track) {
+        const fam = this.trackFor(pid);
+        const res = this.inTrack(fam, () => this.actHere(pid, p, a));
+        this.checkMerge();
+        return res;
       }
-      if (res?.ok) { this.pump(); this.bump(); }
-      return res ?? { ok: true };
+      return this.actHere(pid, p, a);
     } catch (err) {
       console.error(`[standoff] action ${t} threw:`, err);
       return { error: 'Something went wrong in the back room. Nothing was lost.' };
     }
+  }
+
+  actHere(pid, p, a) {
+    const t = a.t;
+    const b = this.s.beat;
+    let res;
+    switch (t) {
+      case 'next': res = this.ready(pid); break;
+      case 'pass': res = this.passWindow(pid); break;
+      case 'card': res = playCard(this, p, a); break;
+      case 'respond': res = this.respond(p, a); break;
+      case 'muscle': res = this.useMuscle(p); break;
+      case 'mechanic': res = this.useMechanic(p); break;
+      case 'grudge': res = this.useGrudge(p, a); break;
+      case 'wipe': res = this.wipeStamp(p, a); break;
+      case 'sell': res = this.sellCard(p, a); break;
+      case 'jail': res = this.jailAction(p, a); break;
+      case 'wire': res = this.useWire(p); break;
+      case 'offer': res = this.makeOffer(p, a); break;
+      case 'withdraw': res = this.withdraw(p, a); break;
+      default: {
+        if (!b || !this.engine?.act) return { error: 'Nothing to do yet.' };
+        if (b.window) return { error: 'Wait for the dice.' };
+        res = this.engine.act(this, b, this.beatDef, pid, a);
+      }
+    }
+    if (res?.ok) { this.pump(); this.bump(); }
+    return res ?? { ok: true };
   }
 
   ready(pid) {
@@ -653,6 +774,11 @@ export class Game {
   }
 
   skip() {
+    if (this.s.tracks && !this.track) {
+      const all = this.eachTrack(() => (this.s.beat ? this.skip() : { ok: true }));
+      this.bump();
+      return all.find((r) => r?.ok) ?? { error: 'Nothing to skip.' };
+    }
     const b = this.s.beat;
     if (this.s.phase !== 'playing' || !b) return { error: 'Nothing to skip.' };
     if (b.window) { this.closeWindow(); this.pump(); this.bump(); return { ok: true }; }
@@ -665,6 +791,9 @@ export class Game {
 
   /** Whose move it is right now. People only; bots are handled on the clock. */
   pending() {
+    if (this.s.tracks && !this.track) {
+      return this.trackIds.flatMap((id) => this.inTrack(id, () => this.pending()));
+    }
     const b = this.s.beat;
     if (this.s.phase !== 'playing' || !b) return [];
     if (b.window) return this.windowPending(b.window);
@@ -675,7 +804,7 @@ export class Game {
 
   falloutWaiters() {
     const b = this.s.beat;
-    return this.s.players.filter((p) => !p.bot && p.connected !== false && !b.ready.includes(p.id)).map((p) => p.id);
+    return this.s.players.filter((p) => !p.bot && p.connected !== false && this.inCurrentTrack(p) && !b.ready.includes(p.id)).map((p) => p.id);
   }
 
   /** Every inbound action or tick ends here: move on as far as the state allows. */
@@ -692,7 +821,7 @@ export class Game {
         return;
       }
       if (b.stage === 'fallout') {
-        const humansHere = this.s.players.some((p) => !p.bot && p.connected !== false);
+        const humansHere = this.s.players.some((p) => !p.bot && p.connected !== false && this.inCurrentTrack(p));
         if (humansHere && this.falloutWaiters().length) return;
         if (!humansHere && this.s.config.clock && this.s.deadline && this.clock() < this.s.deadline) return;
         this.finishBeat();
@@ -718,6 +847,11 @@ export class Game {
   /** Called on a timer. Returns true if anything moved. */
   tick(now = this.clock()) {
     if (this.s.phase !== 'playing') return false;
+    if (this.s.tracks && !this.track) {
+      const before = this.s.version;
+      this.eachTrack(() => this.tick(now));
+      return this.s.version !== before;
+    }
     const before = this.s.version;
     const b = this.s.beat;
     if (!b) return false;
@@ -757,8 +891,7 @@ export class Game {
   settle(maxSteps = 5000) {
     for (let i = 0; i < maxSteps && this.s.phase === 'playing'; i++) {
       const v = this.s.version;
-      this.runBots();
-      this.pump();
+      this.eachTrack(() => { this.runBots(); this.pump(); });
       if (this.s.version === v) break;
     }
   }
@@ -831,15 +964,18 @@ export class Game {
     return { ok: true };
   }
 
+  /** The rat's wire adds to Prout's case; Nonna's turncoat quietly loses a page of it. */
   useWire(p) {
-    if (p.secret?.id !== 'rat') return { error: 'You are not wearing one.' };
+    const kind = p.secret?.id;
+    if (kind !== 'rat' && kind !== 'turncoat') return { error: 'You are not wearing one.' };
     const act = this.s.scene?.act ?? 0;
     if (!act) return { error: 'Not here.' };
-    if (p.used.wire === act) return { error: 'Once an act. Prout said so.' };
+    if (p.used.wire === act) return { error: 'Once an act. That was the arrangement.' };
     p.used.wire = act;
     p.stats.wire = (p.stats.wire ?? 0) + 1;
-    this.s.caseFile += 1;
-    this.s.caseLog.push({ night: this.s.week.i, delta: 1, why: 'something on a wire', hidden: true });
+    const delta = kind === 'rat' ? 1 : -1;
+    this.s.caseFile = Math.max(0, this.s.caseFile + delta);
+    this.s.caseLog.push({ night: this.s.week.i, delta, why: kind === 'rat' ? 'something on a wire' : 'a page of Prout’s case went missing', hidden: true });
     return { ok: true };
   }
 
@@ -973,6 +1109,18 @@ export class Game {
   }
 
   view(pid = null) {
+    if (this.s.tracks && !this.track) {
+      const waiting = new Set(this.pending());
+      const t = this.trackFor(pid);
+      const out = this.inTrack(t, () => this.view(pid));
+      for (const row of out.players) row.pending = waiting.has(row.id);
+      if (out.you) out.you.pending = waiting.has(out.you.id);
+      out.tracks = this.trackIds.map((id) => {
+        const tr = this.s.tracks[id];
+        return { id, name: this.s.families?.names?.[id] ?? id, finished: !!tr.finished, scene: tr.scene?.title ?? null, beat: tr.beat?.title ?? null, mine: id === t };
+      });
+      return out;
+    }
     const s = this.s;
     const me = pid ? this.getPlayer(pid) : null;
     const bands = this.bands();
@@ -1001,11 +1149,13 @@ export class Game {
         stamps: p.stamps, cards: p.cards.length,
         grudgesAgainst: s.players.reduce((n, q) => n + (q.grudges[p.id] ?? 0), 0),
         dealt: s.phase === 'over' ? !!p.deal : undefined,
+        family: this.familyOf(p),
         pending: false,
       })),
+      families: s.families ? { ids: s.families.ids, names: s.families.names, you: pid ? this.familyOf(pid) : null, pots: this.chapter.familyPots?.(c) ?? null } : null,
       scene: s.scene ? {
         title: s.scene.title, act: s.scene.act, day: s.scene.day, count: s.scene.count,
-        kicker: s.scene.kicker, nightId: s.scene.nightId,
+        kicker: s.scene.kicker, nightId: s.scene.nightId, family: s.scene.family ?? null,
       } : null,
       oaths: s.oaths.filter((o) => !o.brokenBy).map((o) => [o.a, o.b]),
       ious: s.ious.map((o) => ({ from: o.from, to: o.to, pct: o.pct })),
@@ -1031,7 +1181,7 @@ export class Game {
         notes: me.notes.slice(-12),
         offers: s.offers.filter((o) => o.to === me.id).map((o) => OFFER_VIEW(this, o)),
         sent: s.offers.filter((o) => o.from === me.id).map((o) => OFFER_VIEW(this, o)),
-        rat: me.secret?.id === 'rat' ? { wireUsed: me.used.wire === (this.s.scene?.act ?? 0), canWire: !!this.s.scene?.act && me.used.wire !== this.s.scene.act } : null,
+        rat: ['rat', 'turncoat'].includes(me.secret?.id) ? { kind: me.secret.id, wireUsed: me.used.wire === (this.s.scene?.act ?? 0), canWire: !!this.s.scene?.act && me.used.wire !== this.s.scene.act } : null,
         pending: waiting.has(me.id),
         muscle: me.job === 'muscle' && me.used.muscle !== s.week.n,
         mechanic: me.job === 'mechanic' && !me.used.mechanic,
@@ -1047,7 +1197,7 @@ export class Game {
         key: b.key, id: b.id, engine: b.engine, stage: b.stage,
         time: b.time, place: b.place, title: b.title, kicker: b.kicker, text: b.text,
         lines: b.lines, receipt: b.stage === 'fallout' ? b.receipt : null,
-        headline: b.headline ?? null, dossier: !!def.dossier, interlude: !!s.scene?.interlude,
+        headline: b.headline ?? null, dossier: typeof def.dossier === 'function' ? !!def.dossier(c, pid) : !!def.dossier, interlude: !!s.scene?.interlude,
         lastRoll: b.lastRoll ?? null,
         window: b.window ? this.windowView(b.window, pid) : null,
         ready: b.ready,
@@ -1073,6 +1223,7 @@ export class Game {
 
   /** People who have yet to act, for pass-and-play: whose turn is it on the device? */
   awaiting() {
+    if (this.s.tracks && !this.track) return this.trackIds.flatMap((id) => this.inTrack(id, () => this.awaiting()));
     const b = this.s.beat;
     if (!b) return [];
     const list = this.pending();
@@ -1201,6 +1352,13 @@ export class Context {
   byJob(job) { return this.s.players.find((p) => p.job === job) ?? null; }
   freeByJob(job) { return this.free.find((p) => p.job === job) ?? null; }
   isAway(id) { return this.g.isAway(this.p(id)); }
+
+  /** 'b', 'c' or null: which family somebody is in, if this is a Families game. */
+  familyOf(id) { return this.g.familyOf(id); }
+  get families() { return this.s.families; }
+  get track() { return this.g.track ?? null; }
+  /** Everybody in a family, free or not. */
+  family(fam) { return this.s.players.filter((p) => this.g.familyOf(p) === fam); }
 
   flag(k) { return this.s.flags[k]; }
   set(k, v = true) { this.s.flags[k] = v; }

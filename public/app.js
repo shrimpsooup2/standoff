@@ -469,6 +469,9 @@ function renderChrome() {
   $('#bagChip').innerHTML = state.phase === 'lobby' ? '' : `<span class="bag-ico" aria-hidden="true"></span>${money(bag.total)}<small>/${money(bag.target)}</small>`;
   $('#bagChip').title = bag.milestone ? `Morty wants ${money(bag.milestone.want)} in the Bag by the end of this act` : 'The Bag';
   $('#bagChip').classList.toggle('hidden', state.phase === 'lobby');
+  const env = state.families?.pots?.c;
+  $('#envChip').classList.toggle('hidden', !env || state.phase === 'lobby');
+  if (env) $('#envChip').innerHTML = `<span class="env-ico" aria-hidden="true"></span>${money(env.total)}`;
   $('#fileChip').innerHTML = state.phase === 'lobby' ? '' : `<span class="file-ico" aria-hidden="true"></span>${state.caseFile}`;
   $('#fileChip').classList.toggle('hidden', state.phase === 'lobby');
   $('#fileChip').classList.toggle('thick', state.caseFile >= 6);

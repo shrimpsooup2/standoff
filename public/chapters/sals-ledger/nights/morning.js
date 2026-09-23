@@ -46,15 +46,21 @@ export default {
         else if (c.memo.milestone) c.line(`Morty got his installment: ${money(c.memo.milestone.want)} by the end of the act. He called Nonna to say thank you. She didn’t pick up.`);
       },
       text(c) {
-        const since = c.s.story.filter((e) => e.courier).slice(-1)[0];
+        // every story the paper has run since the last time anybody read it
+        const seen = c.flag('courierSeen') ?? -1;
+        const fresh = c.s.story.map((e, i) => ({ ...e, i })).filter((e) => e.courier && e.i > seen);
+        c.set('courierSeen', c.s.story.length - 1);
         const out = [];
-        if (since) {
-          c.beat && (c.beat.headline = since.courier);
-          out.push(since.text);
+        if (fresh.length) {
+          const [lead, ...rest] = fresh;
+          if (c.beat) c.beat.headline = lead.courier;
+          out.push(lead.text);
+          for (const more of rest) out.push(`Also on page two — ${more.courier.toLowerCase().replace(/^./, (x) => x.toUpperCase())}. ${more.text}`);
         } else {
           out.push('Nothing in the paper about you this morning. Nonna reads it twice to make sure.');
         }
         out.push(`At seven fifteen the kitchen phone rings. It’s Sal, from county. ${salCall(c)}`);
+        if (c.families) out.push(`Across the river, at the same hour, Vinnie Castellano is reading the same paper at the bar of his social club, and smiling at ${fresh.length > 1 ? 'page two' : 'page one'}. The Envelope has ${money(c.s.envelope?.total ?? 0)} in it.`);
         const inside = c.players.filter((p) => p.jailUntil != null && p.jailUntil >= c.s.week.n);
         if (inside.length) out.push(`${inside.map((p) => p.name).join(' and ')} ${inside.length === 1 ? 'is' : 'are'} in county today, and will miss tonight.`);
         const low = c.players.filter((p) => p.lowUntil != null && p.lowUntil >= c.s.week.n + 1);
@@ -75,7 +81,7 @@ export const twist = {
     { beat: 'windfall', weight: 0.8 },
     { beat: 'page', weight: 1 },
     { beat: 'gary-gone', when: (c) => !c.flag('gary') },
-    { beat: 'truce', when: (c) => c.flag('war') && !c.flag('truce'), weight: 1.5 },
+    { beat: 'truce', when: (c) => c.flag('war') && !c.flag('truce') && !c.families, weight: 1.5 },
   ] }],
   defs: {
     fee: {

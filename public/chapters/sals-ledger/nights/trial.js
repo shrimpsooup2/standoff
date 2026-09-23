@@ -4,6 +4,8 @@
 import { money, biggestGiver } from '../common.js';
 import { clamp } from '../../../engine/util.js';
 import { suspicion, friendOf, enemyOf } from '../../../engine/bots.js';
+import { envelopeShift } from '../families.js';
+import { envelopeTake } from '../common.js';
 
 /**
  * How far the Bag moves the Verdict: one for every tenth of Morty's number
@@ -18,7 +20,7 @@ export function bagShift(c) {
 
 /** What the Verdict needs: four plus the Case File, bent by the Bag. */
 export function verdictTarget(c) {
-  let t = 4 + c.caseFileValue + bagShift(c);
+  let t = 4 + c.caseFileValue + bagShift(c) + envelopeShift(c);
   if (c.flag('ring') === 'fake-caught') t += 1;
   return clamp(t, 3, 12);
 }
@@ -29,6 +31,8 @@ export function verdictParts(c) {
   const parts = [`4, plus the Case File (${c.caseFileValue})`];
   if (shift < 0) parts.push(`minus ${-shift} for the ${money(over)} Morty didn’t need`);
   else if (shift > 0) parts.push(`plus ${shift}, because the Bag is ${money(-over)} short and Morty phoned some of it in`);
+  const env = envelopeShift(c);
+  if (env) parts.push(`plus ${env} because Vinnie’s Envelope out-spent the Bag`);
   if (c.flag('ring') === 'fake-caught') parts.push('plus 1 for Nonna’s curse');
   return parts;
 }
@@ -48,7 +52,7 @@ function gallery(c) {
 
 export default {
   id: 'trial', title: 'The Trial', interlude: true, act: 3, day: 'MONDAY, 9:00 A.M.', kicker: 'MONDAY',
-  beats: ['courtroom', 'jury', 'witnesses', 'verdict'],
+  beats: ['courtroom', 'jury', 'vinnie', 'witnesses', 'verdict'],
   defs: {
     courtroom: {
       engine: 'story', time: '9:00 A.M.', place: 'Courtroom 4B', title: 'Courtroom 4B', kicker: 'MONDAY',
@@ -68,13 +72,14 @@ export default {
     jury: {
       engine: 'vote', time: '11:20 A.M.', place: 'The corridor outside 4B', title: 'Nonna Wants a Name', kicker: 'WHO TALKED?',
       noSelf: true,
+      voters: (c) => c.free.filter((p) => c.familyOf(p.id) !== 'c').map((p) => p.id),
       text: (c) => [
         'The jury goes out. Nonna takes you all into the corridor by the water fountain and looks at you one at a time, which takes a long time, because she means it.',
         '“Somebody at this table has been talking to Prout. I have known it since Wednesday. Give me a name.”',
         'Name the rat and Prout’s case falls apart: the Case File drops by three. Name somebody who took his deal and it drops by one, and Nonna takes what Prout paid them. Name somebody innocent and Nonna pays them for the insult, out of the Bag, and they will not forget who pointed.',
       ],
       options: (c) => [
-        ...c.players.map((p) => ({ id: p.id, label: p.name, player: true })),
+        ...c.players.filter((p) => c.familyOf(p.id) !== 'c').map((p) => ({ id: p.id, label: p.name, player: true })),
         { id: 'nobody', label: 'Nobody here talked', blurb: 'If it’s true, Prout’s case is thinner than he thinks.' },
       ],
       bot(c, p, options) {
@@ -138,6 +143,52 @@ export default {
         c.give(t.id, pay, 'Nonna');
         c.line(`${t.name}. Nonna looks at ${t.name} for a long moment, then opens her handbag and gives them ${money(pay)} out of the Bag. “For the insult,” she says. ${t.name} was clean.`);
         for (const pid of pointers) if (pid !== t.id) c.grudge(t.id, pid, 'pointed at you in front of Nonna');
+      },
+    },
+
+    vinnie: {
+      engine: 'vote', time: '11:40 A.M.', place: 'The men’s room on the second floor', title: 'Vinnie Wants a Name', kicker: 'WHO’S NONNA’S?',
+      when: (c) => !!c.families,
+      noSelf: true,
+      voters: (c) => c.free.filter((p) => c.familyOf(p.id) === 'c').map((p) => p.id),
+      text: () => [
+        'Vinnie takes his own people into the men’s room on the second floor and runs the taps so nobody can listen.',
+        '“Nonna Benedetto has had one of ours in her pocket since 2011. I have always known. Today I want to know who.”',
+        'Name Nonna’s turncoat and Vinnie hands them to Prout: the Case File grows by two. Name somebody innocent and Vinnie pays them for the insult out of the Envelope, and they will not forget who pointed.',
+      ],
+      options: (c) => [
+        ...c.family('c').map((p) => ({ id: p.id, label: p.name, player: true })),
+        { id: 'nobody', label: 'Nobody here', blurb: 'If it’s true, Vinnie will be very pleased with all of you.' },
+      ],
+      bot(c, p, options) {
+        const pool = options.filter((o) => o.player && o.id !== p.id);
+        if (!pool.length || p.secret?.id === 'turncoat') return pool.length && c.rng.chance(0.6) ? c.rng.pick(pool).id : 'nobody';
+        const scored = pool.map((o) => ({ id: o.id, s: suspicion(c.g, p, c.p(o.id)) }));
+        const best = scored.sort((a, b) => b.s - a.s)[0];
+        return best && best.s >= 2.2 ? best.id : 'nobody';
+      },
+      resolve(c, { choice, votes }) {
+        const pointers = Object.entries(votes).filter(([, v]) => v === choice).map(([pid]) => pid);
+        if (choice === 'nobody') {
+          c.set('trialNamedC', null);
+          c.line(c.family('c').some((p) => p.secret?.id === 'turncoat')
+            ? 'Vinnie turns the taps off. “Somebody in this room is lying to me,” he says, “and I am sixty-six, and I will find out.”'
+            : 'Vinnie turns the taps off and pats each of you on the cheek. Nobody in this room belongs to Nonna. He seems almost disappointed.');
+          return;
+        }
+        const t = c.p(choice);
+        c.set('trialNamedC', choice);
+        if (t.secret?.id === 'turncoat') {
+          c.stamp(t.id, 'RAT');
+          c.line(`${t.name}. Vinnie nods slowly, like a man who already knew. By lunchtime Prout has a very interesting new witness, and Nonna has one less friend across the river.`);
+          c.caseFile(2, `${t.name} was Nonna’s, and Vinnie gave them to Prout`);
+          for (const pid of pointers) c.g.bond(pid, t.id, 'caught');
+          return;
+        }
+        const pay = envelopeTake(c, 25000);
+        c.give(t.id, pay, 'Vinnie');
+        c.line(`${t.name}. Vinnie looks at ${t.name} for a long moment, then peels ${money(pay)} out of the Envelope and puts it in their breast pocket. “For the insult.” It wasn’t ${t.name}.`);
+        for (const pid of pointers) if (pid !== t.id) c.grudge(t.id, pid, 'pointed at you in front of Vinnie');
       },
     },
 

@@ -64,6 +64,8 @@ function settings(state, isHost) {
     <div class="setting"><span class="stamp">the week</span>${opt('length', 'full', 'Seven nights · about an hour')}${opt('length', 'short', 'Four nights · half an hour')}</div>
     <div class="setting"><span class="stamp">the clock</span>${opt('clock', true, 'On')}${opt('clock', false, 'Off')}${c.clock ? `${opt('pace', 'relaxed', 'Relaxed')}${opt('pace', 'normal', 'Normal')}${opt('pace', 'brisk', 'Brisk')}` : ''}</div>
     <div class="setting"><span class="stamp">a rat at the table</span>${opt('rat', 'auto', 'From five players')}${opt('rat', 'on', 'Always')}${opt('rat', 'off', 'Never')}</div>
+    <div class="setting"><span class="stamp">two families</span>${opt('families', 'auto', 'From seven players')}${opt('families', 'on', 'Always')}${opt('families', 'off', 'Never')}
+      <p class="small faint">The table splits into Benedettos, who need Sal to walk, and Castellanos, who need him convicted. Most nights the families are apart, at the same time.</p></div>
   </div>`;
 }
 
@@ -169,7 +171,16 @@ export function table(ctx) {
   const { state, local } = ctx;
   const b = state.beat;
   const out = [sceneHeader(state)];
-  if (!b) return out.join('') + '<p class="big-note">…</p>';
+  if (!b) {
+    const mine = state.tracks?.find((t) => t.mine);
+    if (mine?.finished) return out.join('') + `<p class="big-note">${esc(mine.name)} are done for the night. Across the river, the other family isn’t. Wait for them.</p>`;
+    return out.join('') + '<p class="big-note">…</p>';
+  }
+  if (state.tracks?.length) {
+    const other = state.tracks.find((t) => !t.mine);
+    const mine = state.tracks.find((t) => t.mine);
+    if (other) out.push(`<div class="meanwhile fam-${esc(other.id)}"><span class="stamp">${esc(mine?.name ?? '')} tonight · meanwhile, across the river</span>${esc(other.name)}: ${other.finished ? 'done for the night, waiting on you.' : `${esc(other.scene ?? '')}${other.beat ? ` — ${esc(other.beat)}` : ''}.`}</div>`);
+  }
   if (local?.stage === 'shared' && local.seat) out.push(`<div class="turn-banner">${esc(local.seat.name)}’s move — everybody can watch</div>`);
   if (local?.stage === 'private' && local.seat && local.mode === 'device') out.push(`<div class="turn-banner private">Only ${esc(local.seat.name)} looks. ${local.peek ? '' : 'The device moves on when you’re done.'}</div>`);
   out.push(beatCard(state));
@@ -256,8 +267,18 @@ export function monday(ctx) {
       <p class="faint">The Bag: ${money(e.bag.total)} of ${money(e.bag.target)} · The Case File: ${e.caseFile}</p>
     </div>`);
   }
+  if (e.families) {
+    const f = e.families;
+    out.push(`<div class="families-result">${f.rows.map((r) => `<div class="fam-card fam-${esc(r.id)}${r.id === f.winner ? ' won' : ''}">
+      <span class="stamp">${r.id === f.winner ? 'won monday' : 'lost monday'}</span>
+      <h3>${esc(r.name)}</h3>
+      <div class="fam-total">${money(r.total)}</div>
+      <p class="small">${esc(listNames(r.members))}${r.best ? ` · richest: ${esc(r.best)}` : ''}</p>
+    </div>`).join('')}</div>`);
+  }
   const reveals = [];
   if (e.rat) reveals.push(`<p><b>${esc(e.rat.name)}</b> was the rat${e.rat.caught ? ', and Nonna caught them.' : ', and nobody named them.'}</p>`);
+  if (e.turncoat) reveals.push(`<p><b>${esc(e.turncoat.name)}</b> was Nonna’s all along${e.turncoat.caught ? ', and Vinnie found out.' : ', and Vinnie never knew.'}</p>`);
   if (e.deals?.length) reveals.push(`<p>Prout’s deal: ${e.deals.map((d) => `<b>${esc(d.name)}</b>${d.where === 'lockup' ? ' (from a cell)' : ''}${d.forfeit ? ' — Nonna took the money' : ''}`).join(', ')}.</p>`);
   else reveals.push('<p>Nobody took Prout’s deal.</p>');
   if (e.named?.length) reveals.push(`<p>In the corridor, the crew named ${esc(listNames(e.named))}.</p>`);
@@ -269,7 +290,7 @@ export function monday(ctx) {
     out.push(`<div class="standing${r.rank === 1 ? ' first' : ''}">
       <span class="st-rank">${r.rank}</span>
       <div class="st-main">
-        <div class="st-name">${esc(r.name)} <small>${esc(r.job ?? '')}</small></div>
+        <div class="st-name">${esc(r.name)} <small>${esc([r.family ? e.families?.names?.[r.family] : null, r.job].filter(Boolean).join(' · '))}</small></div>
         ${r.secret ? `<div class="st-secret ${r.secret.met ? 'met' : 'missed'}">${esc(r.secret.name)} — ${r.secret.met ? 'done' : 'not done'}</div>` : ''}
         <p class="epilogue">${esc(r.epilogue)}</p>
         ${open ? `<div class="st-lines"><div class="r-row"><span>Holding on Sunday night</span><span>${money(r.start)}</span></div>${r.lines.map((l) => `<div class="r-row"><span>${esc(l.label)}</span><span class="${l.n < 0 ? 'neg' : 'pos'}">${l.n ? `${l.n > 0 ? '+' : ''}${money(l.n)}` : '—'}</span></div>`).join('')}</div>` : ''}

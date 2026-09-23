@@ -7,7 +7,8 @@
 import { round5k } from '../../engine/util.js';
 import { buildDeck } from '../../engine/cards.js';
 import { JOBS, JOB_ORDER, JOB_REST } from './jobs.js';
-import { dealSecrets, secretText } from './secrets.js';
+import { dealSecrets, dealFamilySecrets, secretText } from './secrets.js';
+import { familiesOn, splitFamilies, dealFamilyJobs, familyPlan, familyPots } from './families.js';
 import { COMPLICATIONS, POOLS } from './complications.js';
 import { milestoneNow } from './common.js';
 import { ending } from './ending.js';
@@ -20,8 +21,10 @@ import theRoom from './nights/the-room.js';
 import nightBefore from './nights/night-before.js';
 import trial from './nights/trial.js';
 import { EXTRA_NIGHTS } from './nights/all.js';
+import castellanoNights from './nights/castellano.js';
+import raid from './nights/raid.js';
 
-const NIGHTS = Object.fromEntries([prologue, threeBanks, morning, twist, theRoom, nightBefore, trial, ...EXTRA_NIGHTS].map((n) => [n.id, n]));
+const NIGHTS = Object.fromEntries([prologue, threeBanks, morning, twist, theRoom, nightBefore, trial, ...EXTRA_NIGHTS, ...castellanoNights, raid].map((n) => [n.id, n]));
 
 /** Every beat in the chapter by its global id: "night/beat". */
 const BEATS = {};
@@ -59,15 +62,21 @@ const SLOTS = {
     ['cleanup', (c) => Math.max(0.2, (c.caseFileValue - 3) * 0.8)],
   ] },
   short1: { act: 1, pool: null },
+  // the Benedettos' second night in a Families game: the wedding and the
+  // retaliation are shared with the Castellanos, so they don't come up here
+  fam1: { act: 1, pool: [['night-guard', () => 1], ['bookies-box', () => 1]] },
 };
 SLOTS.short1.pool = SLOTS.act1.pool;
+
+/** Nights that only make sense with the Castellanos as strangers across the river. */
+const NOT_IN_FAMILIES = new Set(['wedding', 'retaliation']);
 
 function pick(c, slot) {
   const def = SLOTS[slot];
   if (!def) return null;
-  const played = new Set(c.s.week.plan.filter((x) => !x.startsWith('slot:')));
+  const played = new Set([...c.s.week.plan.filter((x) => !x.startsWith('slot:') && !x.startsWith('split:')), ...(c.s.week.played ?? [])]);
   const options = def.pool
-    .filter(([id]) => NIGHTS[id] && !played.has(id))
+    .filter(([id]) => NIGHTS[id] && !played.has(id) && !(c.s.families && NOT_IN_FAMILIES.has(id)))
     .map(([id, w]) => [id, Math.max(0, w(c))])
     .filter(([, w]) => w > 0);
   if (!options.length) return null;
@@ -80,7 +89,16 @@ function pick(c, slot) {
   return options[options.length - 1][0];
 }
 
+/** When a family's slot has nothing left in it, any night they haven't played. */
+function fallbackNight(c) {
+  const played = new Set(c.s.week.played ?? []);
+  const any = ['night-guard', 'bookies-box', 'confessional', 'drop', 'armored-car', 'phone-call', 'ring']
+    .filter((id) => NIGHTS[id] && !played.has(id));
+  return any.length ? c.rng.pick(any) : null;
+}
+
 function plan(c) {
+  if (c.s.families) return familyPlan(c);
   if (c.s.config.length === 'short') {
     c.set('nightDays', [0, 2, 4, 6]);
     return ['prologue', 'three-banks', 'morning', 'slot:short1', 'morning', 'the-room', 'slot:act2', 'morning',
@@ -93,7 +111,8 @@ function plan(c) {
 
 function setup(c) {
   const n = c.players.length;
-  c.s.bag.target = round5k(70000 * n + 60000);
+  if (familiesOn(c)) return setupFamilies(c);
+  c.s.bag.target = bagTarget(c, n);
   // a bigger crew leaves a bigger trail before anybody does anything
   const start = n >= 9 ? 4 : n >= 7 ? 3 : 2;
   c.s.caseFile = start;
@@ -108,12 +127,40 @@ function setup(c) {
   dealSecrets(c, NIGHTS.ring ? ['ring'] : []);
 }
 
+/** What Morty wants: about $70k a head, less for a short week. */
+function bagTarget(c, n) {
+  const week = c.s.config.length === 'short' ? 0.6 : 1;
+  return round5k((70000 * n + 60000) * week);
+}
+
+/** Seven to ten: two sides of the river. */
+function setupFamilies(c) {
+  const n = c.players.length;
+  splitFamilies(c);
+  const nb = c.family('b').length;
+  c.s.bag.target = bagTarget(c, nb);
+  // the Castellanos will do their own filling of this folder
+  const start = 2;
+  c.s.caseFile = start;
+  c.s.caseLog.push({ night: -1, delta: start, why: 'Prout’s folder, before anybody did anything', hidden: false });
+  dealFamilyJobs(c, JOB_ORDER, JOB_REST);
+  for (const p of c.players) p.cash = 20000;
+  c.s.deck = c.rng.shuffle(buildDeck());
+  for (const p of c.players) c.g.draw(p.id, 2);
+  dealFamilySecrets(c, NIGHTS.ring ? ['ring'] : []);
+}
+
 /** The act of whatever real night comes next, to know when an act has ended. */
 function nextAct(c) {
   const w = c.s.week;
   for (let i = w.i + 1; i < w.plan.length; i++) {
     const id = w.plan[i];
     if (id.startsWith('slot:')) return SLOTS[id.slice(5)]?.act ?? null;
+    if (id.startsWith('split:')) {
+      const first = id.slice(6).split('|')[0];
+      if (first.startsWith('slot:')) return SLOTS[first.slice(5)]?.act ?? null;
+      return NIGHTS[first]?.act ?? null;
+    }
     const def = NIGHTS[id];
     if (def && !def.interlude) return def.act ?? null;
   }
@@ -149,6 +196,7 @@ function onArrest(c, pid) {
 /** Gary, the Castellanos and the rest of the week happen between nights too. */
 function afterNight(c, nightId) {
   if (NIGHTS[nightId]?.interlude) return;
+  if (c.track) return;
   if (c.flag('gary') === 'basement') {
     const n = c.bagTake(10000);
     if (n) c.remember(`Gary ate ${n >= 10000 ? '$10k' : 'what was left'} of groceries out of the Bag. He wants to know if there is any more of the soup.`);
@@ -165,7 +213,9 @@ export default {
   setup,
   plan,
   pick,
+  fallbackNight,
   nextAct,
+  familyPots,
   night: (id) => NIGHTS[id] ?? null,
   beat: (id) => BEATS[id] ?? null,
   complications(pool) {
