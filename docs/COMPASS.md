@@ -1,6 +1,8 @@
 # The Compass
 
-*Where STANDOFF is going, and the one story it's built around.*
+*Where STANDOFF is going, and the story it's built around.*
+
+STANDOFF is a game of chapters. Each chapter is one self-contained story with its own cast, its own week and its own ending; the rules underneath — the scene engines, dice, cards, grudges — are shared. **Chapter 1 is *Sal's Ledger*.** More follow.
 
 This is a design document, not a rulebook. It exists so that every decision about the game — a card, a scene, a screen — can be checked against the same thing. Where this and the code disagree, the code is out of date.
 
@@ -33,12 +35,12 @@ What's right, and worth carrying into the rebuild: the tone, the table look, and
 
 ---
 
-## The compass: nine rules
+## The compass: ten rules
 
 When a design question comes up, these settle it, in this order.
 
 1. **Together against the job, alone at the split.** Every night needs the group to pull something off, and gives each person a reason to take more than their share. Both, every night.
-2. **Every night is a different kind of decision.** Never the same engine twice in a row.
+2. **Every night is its own story, and every beat inside it is a different decision.** A night has a beginning, a complication and an ending, like an episode. Never the same kind of decision twice in a row.
 3. **Talk is the game.** If a scene can be played in silence, it's the wrong scene. Give people information others need, stakes others can't see, and votes others can swing.
 4. **The story remembers.** Every choice changes something later. If nothing changes, it wasn't a choice; it was a menu.
 5. **Money has a source.** Loot comes out of a job. The Bag is a gym bag on Nonna's kitchen table. Your cut is whatever you didn't put in it.
@@ -46,6 +48,7 @@ When a design question comes up, these settle it, in this order.
 7. **Dice decide what nobody can.** Risk is a roll everybody watches. Cards bend the dice. Nobody's plan survives a two.
 8. **One sentence or it's out.** A card, a job, a secret, a scene's instruction: one sentence each. If it needs two, it's two things.
 9. **The first five minutes sell the night.** Night One has to land for somebody who arrived late holding a drink.
+10. **The small things are the game.** A name in the right sentence, a guard who remembers your face, the time on the clock, the headline the next morning. Immersion is made of details, and every scene is written as if someone will read every word.
 
 ---
 
@@ -114,7 +117,29 @@ Night 6 is **The Last Job**, and which job depends on where you stand: short on 
 
 **Monday — The Trial.** Nonna makes the crew name the rat. Then the Verdict. Then what happened to everybody. Then the ledger: the scores.
 
-A short game compresses the week to four nights (one, two, one). The full week is seven, around fifty minutes.
+A short game compresses the week to four nights. The full week is seven, at around eight minutes a night — an hour, give or take a verdict.
+
+### The nights
+
+| Night | Beats |
+|---|---|
+| **Prologue** — *The Arrest* | The premise. Nonna deals out the week: jobs, secrets, cards. |
+| **The Three Banks** | The Napkin (vote) → The Door (whispers) → The Vault (grab) → The Car (roll) → Counting It Out |
+| **The Night Guard** | The Way In (vote) → Lenny, or the Fence, or the Water → Sal's Box (draft) → The Dogs (roll) → Counting It Out |
+| **The Bookie's Box** | Dressed for It (vote) → The Main Event (side bets) → Just One More (grab) → Overboard (roll) → Counting It Out |
+| **The Castellano Wedding** | The Envelope (hidden gifts) → Table Nine (sit-down) → Vinnie's Offer (private choice) → The Toast (vote, roll) → Counting It Out |
+| **The Retaliation** | The Brick → What Now (vote) → the answer → Who They Take (warn one) → Counting It Out |
+| **The Room** | Prout sees everybody, one at a time. |
+| **The Motel** | The Desk (whispers: which room) → Gary (vote) → Headlights (who stays behind) → Counting It Out |
+| **The Confessional** | Father Dominic (whispers) → The Tapes (private choice) → The Collection Plate (hidden gifts) → Counting It Out |
+| **Nonna's Ring** | The Window (vote) → Benny's price, or the back room, or Sid the jeweler, or the truth → Nonna → Counting It Out |
+| **The Armored Car** | The Coffee Stop (vote) → Seven Things (hidden effort) → The River (split) → Ferry Street (roll) → Counting It Out |
+| **The Phone Call** | Two A.M. (warn one) → The Pickup → The Apartment (private choice) → Bail (vote) → Counting It Out |
+| **The Drop** | Which Car (whispers) → The Chase (rolls) → The Count (one counter, everyone else trusts them) → Counting It Out |
+| **Somebody Talked** | The Courier → Empty Your Pockets → Nonna Wants a Name (hunt) → Nonna's Justice → Counting It Out |
+| **The Counting House** / **The Cleanup** | The last job: a big score if the Bag is short, making evidence disappear if the Case File is fat. |
+| **The Night Before** | Dinner at Dolores's (sit-down) → Sal's Last Call → The Room → The Last Count |
+| **The Trial** | Before the Jury (name the rat) → The Verdict → Monday (what happened to everybody) |
 
 ### How the story remembers
 
@@ -223,23 +248,56 @@ Heat is personal, zero to three, shown as pips on your seat. At three you're **a
 
 ---
 
-## A night, step by step
+## A night is a story
 
-About five minutes each. The same seven beats every night, so nobody learns a new shape; what changes is the decision in the middle.
+Each night is a short episode of four to six **beats**, somewhere around eight minutes. The beats run in order, like scenes: the setup, the way in, the thing going wrong, the way out, and the count. Each beat is one decision, and no two in a row are the same kind.
 
-1. **The scene.** A paragraph of story on the shared screen, and one line in capitals saying what kind of night it is: *TONIGHT: A VOTE. — TONIGHT: ONE OF YOU TALKS. — TONIGHT: HOW GREEDY ARE YOU?*
-2. **The angles.** Private information lands on phones: clues, stakes, temptations. Only you see yours.
-3. **The talk.** Out loud, on a generous timer. This is the game.
-4. **The move.** The night's one decision. Secret, unless the scene says otherwise.
-5. **The roll.** Dice, wherever there's risk. More cards are played here than anywhere else.
-6. **The fallout.** What actually happened, written from what actually happened. Money moves, with a source. Heat, the Case File and the notebook update.
-7. **Counting it out.** Your cut arrives, and you choose how much of it goes in the Bag. Everyone sees the Bag's total. Nobody sees who put in what — except the Numbers Guy.
+**Night 1 — The Three Banks**, in full:
 
-Between nights, Sal calls from lockup with a small random twist, everybody draws a card, and sometimes the scene opens a sit-down.
+| Time | Beat | What happens | The decision |
+|---|---|---|---|
+| 10:15 p.m. | **The Napkin** | Nonna's kitchen. Three banks written on a napkin. Angles dealt. | A vote, with private reasons and a tie-break die. |
+| 11:40 p.m. | **The Door** | Somebody has to talk the crew past whoever's on the door — a retiring manager, a seventy-three-year-old guard, or a Castellano nephew, depending on the bank. | The Talker picks an opening; everybody else holds one clue. |
+| 11:52 p.m. | **The Vault** | The money's in reach and the alarm is live. How it went at the door decides how twitchy the alarm is. | Grab or go, round after round. The Lookout sees the first alarm die. |
+| 12:04 a.m. | **The Car** | The Driver has the engine running. | A getaway roll, with cards, in front of everybody. |
+| 12:40 a.m. | **Counting It Out** | Back at Nonna's. | How much of your cut goes in the Bag. |
+
+Every beat follows the same shape, so nobody has to learn a new one:
+
+1. **The scene.** A short paragraph on the shared screen, the time and place, and one line in capitals saying what this beat is: *A VOTE. — ONE OF YOU TALKS. — HOW GREEDY ARE YOU?*
+2. **The angles.** Private information lands on phones: clues, stakes, temptations.
+3. **The talk.** Out loud, on a generous timer.
+4. **The move.** The beat's one decision.
+5. **The roll.** Dice, wherever there's risk.
+6. **The fallout.** What actually happened, written from what actually happened.
+
+Beats can branch. In *The Night Guard*, the crew votes on how to get into Pier 9: the front gate means talking to Lenny; the fence means a roll; the water means everybody has to row. Same night, three different middles.
+
+Between nights, the crew is back in Nonna's kitchen: the *Harbor Courier* runs a headline about what you did, Sal calls from lockup, everybody draws a card.
 
 ### The one thing that happens every night
 
 Counting it out is the heartbeat, and it's the same every night on purpose, because it's the dilemma the whole week is built on. Money in your pocket is yours, but it can be seized, stolen or blackmailed. Money in the Bag is safe, but it isn't yours any more. And Morty wants installments — the Bag has a milestone at the end of each act, and missing it costs Case File — so "I'll put mine in on Sunday" is a promise. Promises are what this game is about.
+
+---
+
+## Who knows what
+
+Money and information are hidden or open depending on the situation and the table, and lying is always possible and never free.
+
+**Money.**
+- Your own cash is exact on your screen. Everybody else's shows as a band on their seat: *broke*, *getting by*, *flush*.
+- At a table of two, there's nothing to hide: cash is open.
+- Some moments open everyone's pockets. Nonna calls a shakedown and everyone's cash goes on the table. An arrest seizes half of yours in front of everybody. A Wiretap shows one person's. On Monday, everything is counted in public.
+- The Bag's total is always public. Who put in what is secret — except to the Numbers Guy.
+
+**Lying.**
+- Anything said out loud is free to be a lie.
+- Lies about money are checkable: if four people say they put in forty thousand and the Bag went up by a hundred and twenty, somebody's lying, and everybody can do the sum.
+- In the Whispers, the notes you pass the Talker can be doctored — but at the end of the beat every clue is shown next to every note, so a doctored note is caught unless you held a Forgery. Get caught and the Talker holds a grudge, and your seat gets stamped LIAR.
+- One clue in six is simply wrong. That's the cover a liar hopes for, and the game marks it plainly when it happens, so it can't be used as an excuse after the fact.
+- Some jobs make one person the counter. They see the real total. Everybody else sees the number they say.
+- The Numbers Guy sees every contribution. Nothing makes him tell the truth about it.
 
 ---
 
@@ -517,6 +575,23 @@ The social shape changes with the number of people, on purpose.
 
 ---
 
+## The small things
+
+The list that makes it feel like a place and not a game. Every one of these is a requirement, not a nice-to-have.
+
+- **The clock.** Every beat has a time on it, and the time moves. *11:40 p.m.* reads differently from *4:10 a.m.*
+- **Names in sentences.** The story says *Mo's cousin Deb*, not *a player's contact*. The DA says *your friend Kit*, not *another suspect*.
+- **People remember.** Walt the guard remembers who talked to him. Nonna remembers who brought the ring back. Prout remembers who named whom, and uses it.
+- **The morning paper.** Between nights the *Harbor Courier* runs a headline and a paragraph about what you did, written as a neighbourhood paper would: slightly wrong, faintly admiring.
+- **Sal's calls.** Every night Sal rings from lockup. What he says depends on what happened. He always asks about the tomatoes.
+- **Objects.** The Bag is a 1994 Knicks gym bag. The Case File is a manila folder that visibly thickens. Clues are index cards; the notes you pass are torn-off napkin corners.
+- **Dice you can see.** Big, on the felt, rolling. The tie-break shows which faces mean which bank before the die lands.
+- **Places look different.** Nonna's kitchen is warm. The Room is fluorescent and grey. Lockup is lockup.
+- **Receipts.** When a beat ends, the truth comes out: every clue next to every note, every vote with a name on it, who grabbed in which round.
+- **Epilogues.** Everybody gets a paragraph at the end, and it's about them.
+
+---
+
 ## Making it easy
 
 The biggest complaint is that the game is confusing. This design only works if somebody new can follow it without a single rule explained up front.
@@ -562,7 +637,11 @@ The recommendation: start a clean codebase for the game, lift those modules in a
 
 ---
 
-## How to build it: the pilot first
+## How to build it
+
+*Decided: the whole of Chapter 1 gets built, beat by beat, with the pilot below as the first milestone rather than the last.*
+
+### The pilot first
 
 Don't write seven nights and then find out whether it's fun. Build a **pilot episode**, about twenty-five minutes, and put it in front of real people.
 
@@ -595,7 +674,7 @@ Then, in order: the Whispers, the Lifeboat and the Split; sit-downs with IOUs, g
 Decisions this document doesn't make, each with a recommendation.
 
 1. **Is Sal's Ledger the spine?** *Recommend yes.* It's the tone the game already has, and it gives every mechanic a reason. Other weeks — Atlantic City, a wedding in Palermo, a cruise — can come later, as seasons.
-2. **Is everyone's money visible?** *Recommend hidden until Monday, with rough bands on each seat* — "flush", "getting by", "broke". Hidden cash turns "I need this more than you do" into a claim instead of a fact.
+2. ~~**Is everyone's money visible?**~~ *Decided: it depends on the situation and the table — see "Who knows what".*
 3. **How long is a game?** *Recommend seven nights, about fifty minutes, as the default, and four nights, about thirty, as the short game.*
 4. **Is the Rat always in?** *Recommend on by default from five players, and switchable off.*
 5. **How hard can one card hit?** Dirt at 20% feels right. Kiss of Death at half of what's seized might be too much. The pilot will say.
